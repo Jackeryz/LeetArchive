@@ -1,3 +1,8 @@
+![Version](https://img.shields.io/badge/version-v0.1.0-blue)
+![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 # LeetArchive 📦
 
 **LeetArchive** is an open-source, production-quality Manifest V3 browser extension (Chrome / Edge) designed to automatically archive accepted coding solutions to GitHub following the principle of **least privilege**.
