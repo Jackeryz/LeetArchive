@@ -2,6 +2,31 @@ import { EventBus, SolutionExtractedPayload, SubmissionDetectedPayload } from '.
 import { logger } from '../utils/logger';
 
 /**
+ * Normalizes extracted solution code whitespace and line endings before validation and emission:
+ * - Replaces Unicode non-breaking spaces (\u00A0) with standard ASCII spaces.
+ * - Converts CRLF (\r\n) or isolated \r line endings to Unix LF (\n).
+ * - Removes trailing blank lines and whitespace (trimEnd()), ensuring a single trailing newline at file end.
+ * - Preserves leading indentation and internal blank lines.
+ */
+export function normalizeCode(rawCode: string | null): string | null {
+  if (!rawCode) return null;
+
+  // 1. Replace Unicode non-breaking spaces (\u00A0) with standard ASCII spaces
+  let normalized = rawCode.replace(/\u00A0/g, ' ');
+
+  // 2. Convert Windows CRLF (\r\n) and legacy Mac \r line endings to Unix \n
+  normalized = normalized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 3. Remove trailing blank lines and whitespace
+  normalized = normalized.trimEnd();
+
+  if (!normalized) return null;
+
+  // 4. Guarantee single trailing newline
+  return `${normalized}\n`;
+}
+
+/**
  * Service responsible solely for extracting solution source code from LeetCode problem pages
  * using a layered extraction pipeline (Monaco API -> Monaco DOM lines -> Textarea -> Semantic Code).
  */
@@ -66,7 +91,7 @@ export class SolutionExtractor {
   public extractSolutionCode(doc?: Document): string | null {
     // Strategy 1: Monaco Editor Global API
     logger.debug('[SolutionExtractor] Attempting Strategy 1: Monaco Global API');
-    const monacoCode = this.extractFromMonacoApi();
+    const monacoCode = normalizeCode(this.extractFromMonacoApi());
     if (this.validateCode(monacoCode)) {
       logger.debug('[SolutionExtractor] Strategy 1 (Monaco Global API) succeeded.');
       return monacoCode;
@@ -74,7 +99,7 @@ export class SolutionExtractor {
 
     // Strategy 2: Monaco Editor DOM Lines (.view-line)
     logger.debug('[SolutionExtractor] Attempting Strategy 2: Monaco Editor DOM Lines');
-    const domLinesCode = this.extractFromMonacoLines(doc);
+    const domLinesCode = normalizeCode(this.extractFromMonacoLines(doc));
     if (this.validateCode(domLinesCode)) {
       logger.debug('[SolutionExtractor] Strategy 2 (Monaco Editor DOM Lines) succeeded.');
       return domLinesCode;
@@ -82,7 +107,7 @@ export class SolutionExtractor {
 
     // Strategy 3: Textarea / Input Elements
     logger.debug('[SolutionExtractor] Attempting Strategy 3: Textarea Input');
-    const textareaCode = this.extractFromTextarea(doc);
+    const textareaCode = normalizeCode(this.extractFromTextarea(doc));
     if (this.validateCode(textareaCode)) {
       logger.debug('[SolutionExtractor] Strategy 3 (Textarea Input) succeeded.');
       return textareaCode;
@@ -90,7 +115,7 @@ export class SolutionExtractor {
 
     // Strategy 4: Semantic Code Elements (code, pre)
     logger.debug('[SolutionExtractor] Attempting Strategy 4: Semantic Code Elements');
-    const semanticCode = this.extractFromSemanticCode(doc);
+    const semanticCode = normalizeCode(this.extractFromSemanticCode(doc));
     if (this.validateCode(semanticCode)) {
       logger.debug('[SolutionExtractor] Strategy 4 (Semantic Code Elements) succeeded.');
       return semanticCode;

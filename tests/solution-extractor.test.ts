@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { SolutionExtractor } from '../src/leetcode/extractor';
+import { SolutionExtractor, normalizeCode } from '../src/leetcode/extractor';
 import { EventBus, SolutionExtractedPayload, SubmissionDetectedPayload } from '../src/core/events';
 
 // Global mocks for Node environment
@@ -32,6 +32,44 @@ function createMockDocument(elementsList: any[] = []) {
   } as unknown as Document;
 }
 
+describe('Code Normalization (normalizeCode)', () => {
+  it('replaces Unicode non-breaking spaces (\\u00A0) with standard ASCII spaces', () => {
+    const raw = 'def\u00A0twoSum(self,\u00A0nums):\n\u00A0\u00A0\u00A0\u00A0return []';
+    const normalized = normalizeCode(raw);
+    expect(normalized).toBe('def twoSum(self, nums):\n    return []\n');
+  });
+
+  it('converts Windows CRLF (\\r\\n) to Unix LF (\\n)', () => {
+    const raw =
+      'class Solution {\r\n    public int[] twoSum() {\r\n        return new int[]{};\r\n    }\r\n}';
+    const normalized = normalizeCode(raw);
+    expect(normalized).toBe(
+      'class Solution {\n    public int[] twoSum() {\n        return new int[]{};\n    }\n}\n',
+    );
+  });
+
+  it('removes trailing blank lines and guarantees a single trailing newline', () => {
+    const raw = 'function test() {}\n\n\n   \n\t\n';
+    const normalized = normalizeCode(raw);
+    expect(normalized).toBe('function test() {}\n');
+  });
+
+  it('preserves leading indentation and internal blank lines', () => {
+    const raw =
+      'class Solution:\n    def solve(self):\n\n        # Internal comment\n        return True\n';
+    const normalized = normalizeCode(raw);
+    expect(normalized).toBe(
+      'class Solution:\n    def solve(self):\n\n        # Internal comment\n        return True\n',
+    );
+  });
+
+  it('returns null for empty or whitespace-only code strings', () => {
+    expect(normalizeCode('')).toBeNull();
+    expect(normalizeCode('   \r\n\t  \n')).toBeNull();
+    expect(normalizeCode(null)).toBeNull();
+  });
+});
+
 describe('SolutionExtractor', () => {
   let extractor: SolutionExtractor;
   let eventBus: EventBus;
@@ -49,13 +87,16 @@ describe('SolutionExtractor', () => {
     vi.restoreAllMocks();
   });
 
-  it('extracts code via Strategy 1 (Monaco Global API)', () => {
-    const expectedCode = 'class Solution:\n    def twoSum(self, nums, target):\n        return []';
+  it('extracts code via Strategy 1 (Monaco Global API) and normalizes CRLF and non-breaking spaces', () => {
+    const rawCode =
+      'class Solution:\r\n\u00A0\u00A0\u00A0\u00A0def twoSum(self, nums, target):\r\n\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0return []\r\n\r\n';
+    const expectedCode =
+      'class Solution:\n    def twoSum(self, nums, target):\n        return []\n';
     (globalThis.window as any).monaco = {
       editor: {
         getModels: () => [
           {
-            getValue: () => expectedCode,
+            getValue: () => rawCode,
           },
         ],
       },
@@ -95,7 +136,7 @@ describe('SolutionExtractor', () => {
 
     const mockDoc = createMockDocument(mockLines);
     const code = extractor.extractSolutionCode(mockDoc);
-    expect(code).toBe('function twoSum(nums, target) {\n    return [0, 1];\n}');
+    expect(code).toBe('function twoSum(nums, target) {\n    return [0, 1];\n}\n');
   });
 
   it('extracts code via Strategy 3 (Textarea Input Fallback)', () => {
@@ -107,7 +148,7 @@ describe('SolutionExtractor', () => {
 
     const mockDoc = createMockDocument([mockTextarea]);
     const code = extractor.extractSolutionCode(mockDoc);
-    expect(code).toBe('public class Solution { public int[] twoSum() {} }');
+    expect(code).toBe('public class Solution { public int[] twoSum() {} }\n');
   });
 
   it('extracts code via Strategy 4 (Semantic Code / Pre Elements)', () => {
@@ -119,7 +160,7 @@ describe('SolutionExtractor', () => {
 
     const mockDoc = createMockDocument([mockCodeEl]);
     const code = extractor.extractSolutionCode(mockDoc);
-    expect(code).toBe('fn main() { println!("Hello LeetCode"); }');
+    expect(code).toBe('fn main() { println!("Hello LeetCode"); }\n');
   });
 
   it('rejects empty, whitespace-only, or placeholder code in validateCode', () => {

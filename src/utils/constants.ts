@@ -117,3 +117,17 @@ export function validateAndNormalizeLanguage(rawInput: string): string | null {
 
   return null;
 }
+
+/**
+ * Maps a language string to its standard solution filename (e.g. "python3" -> "solution.py", "java" -> "Solution.java").
+ */
+export function getSolutionFilename(language: string): string {
+  const norm = validateAndNormalizeLanguage(language) || language.trim().toLowerCase();
+  const ext =
+    LANGUAGE_EXTENSION_MAP[norm] || LANGUAGE_EXTENSION_MAP[language.trim().toLowerCase()] || 'txt';
+
+  if (norm === 'java' || ext === 'java') {
+    return 'Solution.java';
+  }
+  return `solution.${ext}`;
+}

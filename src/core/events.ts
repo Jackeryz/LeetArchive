@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 export type ExtensionEventType =
   | 'SubmissionDetected'
   | 'SolutionExtracted'
+  | 'ArchiveGenerated'
   | 'SubmissionParsed'
   | 'SyncRequested'
   | 'SyncCompleted'
@@ -91,6 +92,23 @@ export interface SolutionExtractedPayload {
   language: string;
   code: string;
   timestamp: number;
+}
+
+export type ArchiveMode = 'folder' | 'single-file';
+
+export interface VirtualFile {
+  path: string;
+  content: string;
+}
+
+export interface ArchiveGeneratedPayload {
+  problemTitle: string;
+  problemSlug: string;
+  difficulty: ProblemDifficulty;
+  language: string;
+  timestamp: number;
+  archiveMode: ArchiveMode;
+  files: VirtualFile[];
 }
 
 export interface SubmissionParsedPayload {
