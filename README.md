@@ -33,7 +33,7 @@ LeetArchive includes an onboarding wizard inside the options page to guide you t
 7. **Recommended:** Select **No expiration** so LeetArchive continues to function without requiring periodic token replacement.
 8. If you prefer regular credential rotation or are subject to organizational security policies, you may instead choose an expiration date and simply replace the token in LeetArchive when it expires.
 9. Click **Generate token** at the bottom of the page.
-10. Copy the generated token (starts with `github_pat_...`), paste it into Section 1, and enter your **GitHub Repository URL** (e.g. `https://github.com/Jackson/leetcode-solutions` or `Jackson/leetcode-solutions`) in Section 2.
+10. Copy the generated token (starts with `github_pat_...`), paste it into Section 1, and enter your **GitHub Repository URL** (e.g. `https://github.com/username/reponame` or `username/reponame`) in Section 2.
 
 ### 🛡️ Why These Recommendations Exist
 

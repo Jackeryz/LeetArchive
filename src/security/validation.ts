@@ -34,10 +34,10 @@ export class SecurityValidation {
   /**
    * Parses and validates a GitHub repository URL or short "owner/repo" string.
    * Supports:
-   *  - https://github.com/Jackson/leetcode-solutions
-   *  - https://github.com/Jackson/leetcode-solutions/
-   *  - https://github.com/Jackson/leetcode-solutions.git
-   *  - Jackson/leetcode-solutions
+   *  - https://github.com/username/reponame
+   *  - https://github.com/username/reponame/
+   *  - https://github.com/username/reponame.git
+   *  - username/reponame
    */
   static parseGitHubRepoUrl(
     input: string,

@@ -2,7 +2,7 @@
  * LeetCode problem, submission, and language metadata types for LeetSync.
  */
 
-export type ProblemDifficulty = 'Easy' | 'Medium' | 'Hard';
+export type ProblemDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Unknown';
 
 export interface LeetCodeProblem {
   id: string;

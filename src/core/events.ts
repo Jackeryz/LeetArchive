@@ -1,4 +1,4 @@
-import { SubmissionDetails } from '../types/leetcode';
+import { ProblemDifficulty, SubmissionDetails } from '../types/leetcode';
 import { logger } from '../utils/logger';
 
 export type ExtensionEventType =
@@ -69,8 +69,14 @@ export class EventBus {
 }
 
 export interface SubmissionDetectedPayload {
-  rawElementId?: string;
+  problemTitle: string;
   problemSlug: string;
+  difficulty: ProblemDifficulty;
+  language: string;
+  timestamp: number;
+  submissionId?: string;
+  url?: string;
+  rawElementId?: string;
 }
 
 export interface SubmissionParsedPayload {
