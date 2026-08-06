@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeetArchive Settings & Setup</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="settings-container">
+      <header class="header">
+        <div class="header-title">
+          <span class="logo-icon">📦</span>
+          <div>
+            <h1>LeetArchive Settings</h1>
+            <p class="subtitle">Secure, least-privilege GitHub solution archiver</p>
+          </div>
+        </div>
+        <div id="conn-status-badge" class="badge disconnected">Disconnected</div>
+      </header>
+
+      <!-- FIRST TIME SETUP WIZARD -->
+      <section class="wizard-card">
+        <div class="wizard-header">
+          <h2>🔑 First-Time Setup Guide (Fine-Grained PAT)</h2>
+          <span class="security-tag">Least-Privilege Security</span>
+        </div>
+        <p class="wizard-intro">
+          Follow these 10 step-by-step instructions to generate a GitHub Fine-Grained Personal
+          Access Token (PAT) for LeetArchive:
+        </p>
+
+        <ol class="setup-steps">
+          <li>
+            Open GitHub's Fine-Grained Personal Access Token creation page:
+            <div class="btn-step-container">
+              <a
+                href="https://github.com/settings/tokens?type=beta"
+                target="_blank"
+                rel="noreferrer"
+                class="btn outline-primary"
+              >
+                ↗️ Open Fine-Grained PAT Page on GitHub
+              </a>
+            </div>
+          </li>
+          <li>
+            Give the token a descriptive <strong>Token name</strong> (for example,
+            <code>LeetArchive</code>).
+          </li>
+          <li>
+            Under <strong>Repository access</strong>, select
+            <strong>Only select repositories</strong>.
+          </li>
+          <li>
+            Create a dedicated repository (recommended: <code>leetcode-solutions</code>) or select
+            an existing repository.
+          </li>
+          <li>Grant access to <strong>only that repository</strong>.</li>
+          <li>
+            Grant only the minimum required repository permissions:
+            <ul>
+              <li><strong>Contents</strong> → <code>Access: Read and write</code></li>
+              <li><strong>Metadata</strong> → <code>Access: Read-only</code></li>
+            </ul>
+          </li>
+          <li>
+            <strong>Recommended:</strong> Select <strong>No expiration</strong> so LeetArchive
+            continues to function without requiring periodic token replacement.
+          </li>
+          <li>
+            If you prefer regular credential rotation or are subject to organizational security
+            policies, you may instead choose a custom expiration date and simply replace the token
+            in LeetArchive when it expires.
+          </li>
+          <li>Click <strong>Generate token</strong> at the bottom of the page.</li>
+          <li>
+            Copy the generated token (starts with <code>github_pat_...</code>) and paste it into
+            Section 1 below, then enter your Repository Owner and Repository Name in Section 2.
+          </li>
+        </ol>
+
+        <!-- WHY THESE RECOMMENDATIONS EXIST -->
+        <div class="rationale-box">
+          <h3>🛡️ Why These Recommendations Exist</h3>
+          <div class="rationale-grid">
+            <div class="rationale-item">
+              <strong>Only one repository</strong>
+              <p>
+                Strictly follows the principle of <em>least privilege</em> so LeetArchive cannot
+                modify or access any other repositories in your GitHub account.
+              </p>
+            </div>
+            <div class="rationale-item">
+              <strong>Minimum permissions only</strong>
+              <p>
+                Restricts token capabilities to only writing solution files and reading repository
+                metadata, minimizing security risks.
+              </p>
+            </div>
+            <div class="rationale-item">
+              <strong>No expiration (recommended option)</strong>
+              <p>
+                Avoids unexpected workflow interruptions for personal archiving projects. Expiration
+                is never strictly forced—you remain free to choose a custom expiration date if
+                desired.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONFIGURATION FORM -->
+      <main class="settings-form">
+        <!-- SECTION 1: AUTHENTICATION -->
+        <section class="section">
+          <h2>1. Authentication Token</h2>
+          <div class="field">
+            <label for="github-token">GitHub Fine-Grained Personal Access Token (PAT)</label>
+            <div class="token-input-group">
+              <input
+                type="password"
+                id="github-token"
+                placeholder="github_pat_11AAAAAAA_xxxxxxxxxxxxxxxxxxxx..."
+                autocomplete="off"
+              />
+              <button
+                id="toggle-token-visibility"
+                type="button"
+                class="btn icon-btn"
+                title="Toggle visibility"
+              >
+                👁️
+              </button>
+            </div>
+            <span class="help-text"
+              >Your token is stored safely in local browser storage and is never exposed or
+              logged.</span
+            >
+          </div>
+
+          <div class="button-row">
+            <button id="validate-token-btn" class="btn secondary">Validate PAT</button>
+            <button id="disconnect-btn" class="btn danger" style="display: none">
+              Disconnect & Clear Credentials
+            </button>
+          </div>
+        </section>
+
+        <!-- SECTION 2: REPOSITORY SELECTION -->
+        <section class="section">
+          <h2>2. Target Repository Configuration</h2>
+          <p class="section-desc">
+            Enter the full GitHub repository URL or <code>owner/repository</code> name for your
+            solution archives. The default branch will be detected automatically.
+          </p>
+
+          <div class="field">
+            <label for="repo-url">GitHub Repository URL or owner/repository</label>
+            <input
+              type="text"
+              id="repo-url"
+              placeholder="https://github.com/Jackson/leetcode-solutions"
+              autocomplete="off"
+            />
+            <span class="help-text"
+              >Examples: <code>https://github.com/Jackson/leetcode-solutions</code> or
+              <code>Jackson/leetcode-solutions</code></span
+            >
+          </div>
+
+          <div class="button-row">
+            <button id="test-connection-btn" class="btn primary">🔍 Test Connection & Save</button>
+          </div>
+        </section>
+
+        <!-- SECTION 3: DIAGNOSTIC REPORT CARD -->
+        <section id="test-report-card" class="section report-card" style="display: none">
+          <h2>Diagnostic Connection Report</h2>
+          <div id="report-content" class="report-content"></div>
+        </section>
+
+        <div id="save-status" class="status-toast"></div>
+      </main>
+
+      <footer class="footer">
+        <p>LeetArchive v1.0.0 • Open Source Least-Privilege Archiver</p>
+      </footer>
+    </div>
+
+    <script type="module" src="options.ts"></script>
+  </body>
+</html>

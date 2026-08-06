@@ -1,0 +1,130 @@
+:root {
+  --bg-color: #0b0f19;
+  --card-bg: #151d30;
+  --text-main: #f8fafc;
+  --text-sub: #94a3b8;
+  --primary: #38bdf8;
+  --primary-hover: #0284c7;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+}
+
+.popup-container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.badge.connected {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+
+.badge.pending {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: var(--warning);
+}
+
+.badge.disconnected {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+.card {
+  background-color: var(--card-bg);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.card.highlight {
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.card h2 {
+  font-size: 0.9rem;
+  margin: 0 0 4px 0;
+}
+
+.subtext {
+  font-size: 0.8rem;
+  color: var(--text-sub);
+  margin: 4px 0;
+}
+
+.notice-text {
+  font-size: 0.78rem;
+  color: var(--text-sub);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn.primary {
+  background-color: var(--primary);
+  color: #0b0f19;
+}
+
+.btn.primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.footer {
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.footer a {
+  color: var(--text-sub);
+  text-decoration: none;
+}

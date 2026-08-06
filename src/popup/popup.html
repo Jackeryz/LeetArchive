@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeetArchive</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <header class="header">
+        <div class="logo">
+          <span class="icon">📦</span>
+          <h1>LeetArchive</h1>
+        </div>
+        <span id="status-badge" class="badge disconnected">Disconnected</span>
+      </header>
+
+      <main class="main-content">
+        <div id="account-card" class="card">
+          <h2>Authentication & Scope</h2>
+          <p id="user-token-mask" class="subtext">No token configured</p>
+          <p id="repo-name" class="subtext">Target: None selected</p>
+        </div>
+
+        <div id="notice-card" class="card highlight">
+          <p class="notice-text">
+            LeetArchive uses <strong>Fine-Grained PATs</strong> scoped exclusively to
+            <strong>one target repository</strong> for maximum privacy and security.
+          </p>
+        </div>
+
+        <div class="action-buttons">
+          <button id="open-options" class="btn primary">⚙️ Setup / Settings</button>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noreferrer"
+          >GitHub Fine-Grained Tokens</a
+        >
+      </footer>
+    </div>
+    <script type="module" src="popup.ts"></script>
+  </body>
+</html>
