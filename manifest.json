@@ -15,7 +15,7 @@
     "https://github.com/*"
   ],
   "background": {
-    "service_worker": "service-worker.js",
+    "service_worker": "src/background/service-worker.ts",
     "type": "module"
   },
   "content_scripts": [
@@ -24,7 +24,7 @@
         "https://leetcode.com/problems/*",
         "https://leetcode.cn/problems/*"
       ],
-      "js": ["content-script.js"],
+      "js": ["src/content/content-script.ts"],
       "run_at": "document_idle"
     }
   ],

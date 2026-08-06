@@ -1,11 +1,77 @@
 import { LeetCodeProblem, ProblemDifficulty, SubmissionDetails } from '../types/leetcode';
 import { SubmissionDetectedPayload } from '../core/events';
 import { logger } from '../utils/logger';
+import { validateAndNormalizeLanguage } from '../utils/constants';
 
 /**
  * Parser service to extract problem metadata, language, and submission status from LeetCode DOM.
  */
 export class LeetCodeParser {
+  /**
+   * Helper to extract clean visible text from a DOM element, ignoring nested SVG, IMG,
+   * script, style, and decorative [aria-hidden="true"] elements.
+   */
+  static extractCleanText(el: Element): string {
+    if (!el) return '';
+    try {
+      const clone = el.cloneNode(true) as Element;
+      const ignoreSelector = 'svg, img, script, style, [aria-hidden="true"]';
+      const junkNodes = clone.querySelectorAll(ignoreSelector);
+      junkNodes.forEach((node) => node.remove());
+      return clone.textContent ? clone.textContent.trim() : '';
+    } catch {
+      return el.textContent ? el.textContent.trim() : '';
+    }
+  }
+
+  /**
+   * Extracts solution language using semantic DOM detection and accessibility metadata.
+   * Leverages a multi-stage detection pipeline without relying on CSS classes or generated IDs.
+   */
+  static extractLanguage(doc?: Document): string {
+    const documentObj = doc || (typeof document !== 'undefined' ? document : null);
+    if (!documentObj) return 'Unknown';
+
+    // Stage 1: Accessible buttons with popup/dialog/listbox semantics
+    const ariaButtons = documentObj.querySelectorAll(
+      'button[aria-haspopup], [role="button"][aria-haspopup], [role="combobox"]',
+    );
+    for (const btn of Array.from(ariaButtons)) {
+      const rawText = this.extractCleanText(btn);
+      const validated = validateAndNormalizeLanguage(rawText);
+      if (validated) {
+        logger.debug(`Extracted language via ARIA popup button: '${validated}'`);
+        return validated;
+      }
+    }
+
+    // Stage 2: Semantic buttons or interactive role elements
+    const semanticButtons = documentObj.querySelectorAll('button, [role="button"]');
+    for (const btn of Array.from(semanticButtons)) {
+      const rawText = this.extractCleanText(btn);
+      const validated = validateAndNormalizeLanguage(rawText);
+      if (validated) {
+        logger.debug(`Extracted language via semantic button text: '${validated}'`);
+        return validated;
+      }
+    }
+
+    // Stage 3: Selected options in open listbox/dialog menus
+    const selectedOptions = documentObj.querySelectorAll(
+      '[role="option"][aria-selected="true"], [aria-selected="true"]',
+    );
+    for (const opt of Array.from(selectedOptions)) {
+      const rawText = this.extractCleanText(opt);
+      const validated = validateAndNormalizeLanguage(rawText);
+      if (validated) {
+        logger.debug(`Extracted language via selected option: '${validated}'`);
+        return validated;
+      }
+    }
+
+    logger.debug('Language selector not found via semantic DOM pipeline, defaulting to Unknown');
+    return 'Unknown';
+  }
   /**
    * Extracts problem slug from a URL or window.location.pathname.
    */
@@ -94,25 +160,6 @@ export class LeetCodeParser {
     }
 
     logger.debug('Difficulty badge not found in DOM, defaulting to Unknown');
-    return 'Unknown';
-  }
-
-  /**
-   * Extracts solution language from code editor selector or DOM. Best-effort.
-   */
-  static extractLanguage(doc?: Document): string {
-    const documentObj = doc || (typeof document !== 'undefined' ? document : null);
-    if (!documentObj) return 'Unknown';
-
-    const langBtn = documentObj.querySelector(
-      'button[id^="headlessui-listbox-button"], div[class*="language-select"], [data-cy="lang-select"]',
-    );
-    if (langBtn && langBtn.textContent) {
-      const langText = langBtn.textContent.trim().toLowerCase();
-      if (langText) return langText;
-    }
-
-    logger.debug('Language selector not found in DOM, defaulting to Unknown');
     return 'Unknown';
   }
 

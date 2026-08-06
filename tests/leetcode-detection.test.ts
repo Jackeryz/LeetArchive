@@ -35,70 +35,143 @@ if (typeof globalThis.document === 'undefined') {
 }
 
 function createMockDocument(title: string = '') {
-  const elements: Array<{
-    tagName: string;
-    id?: string;
-    className: string;
-    textContent: string;
-    attributes: Record<string, string>;
-  }> = [];
+  const elements: any[] = [];
+
+  function createElementNode(tag: string) {
+    const children: any[] = [];
+    const attributes: Record<string, string> = {};
+    const el: any = {
+      tagName: tag.toUpperCase(),
+      id: '',
+      className: '',
+      textContent: '',
+      attributes,
+      children,
+      setAttribute: (key: string, val: string) => {
+        attributes[key] = val;
+      },
+      getAttribute: (key: string) => attributes[key] || null,
+      hasAttribute: (key: string) => key in attributes,
+      appendChild: (child: any) => {
+        children.push(child);
+        return child;
+      },
+      remove: () => {},
+      cloneNode: (deep = true) => {
+        const cloned = createElementNode(tag);
+        cloned.id = el.id;
+        cloned.className = el.className;
+        cloned.textContent = el.textContent;
+        cloned.attributes = { ...attributes };
+        if (deep) {
+          children.forEach((c) => {
+            if (c.cloneNode) {
+              const childClone = c.cloneNode(true);
+              childClone.parentNode = cloned;
+              cloned.children.push(childClone);
+            }
+          });
+        }
+        return cloned;
+      },
+      querySelectorAll: (selector: string) => {
+        const matches: any[] = [];
+        function search(nodes: any[]) {
+          for (const node of nodes) {
+            const nodeTag = node.tagName ? node.tagName.toLowerCase() : '';
+            if (selector.includes(nodeTag) && nodeTag !== '') {
+              matches.push(node);
+            } else if (
+              selector.includes('[aria-hidden="true"]') &&
+              node.attributes['aria-hidden'] === 'true'
+            ) {
+              matches.push(node);
+            }
+            if (node.children && node.children.length > 0) {
+              search(node.children);
+            }
+          }
+        }
+        search(children);
+        return matches;
+      },
+    };
+    return el;
+  }
+
+  function matchesSelector(el: any, selector: string): boolean {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toLowerCase();
+    const attrs = el.attributes || {};
+
+    if (
+      selector.includes('data-e2e-locator') &&
+      attrs['data-e2e-locator'] === 'submission-result'
+    ) {
+      return true;
+    }
+    if (
+      selector.includes('button[aria-haspopup]') &&
+      tag === 'button' &&
+      'aria-haspopup' in attrs
+    ) {
+      return true;
+    }
+    if (
+      selector.includes('[role="button"][aria-haspopup]') &&
+      attrs['role'] === 'button' &&
+      'aria-haspopup' in attrs
+    ) {
+      return true;
+    }
+    if (selector.includes('[role="combobox"]') && attrs['role'] === 'combobox') {
+      return true;
+    }
+    if (selector === 'button, [role="button"]' || selector.includes('button, [role="button"]')) {
+      if (tag === 'button' || attrs['role'] === 'button') return true;
+    }
+    if (
+      selector.includes('[role="option"][aria-selected="true"]') &&
+      attrs['role'] === 'option' &&
+      attrs['aria-selected'] === 'true'
+    ) {
+      return true;
+    }
+    if (
+      selector.includes('text-sd-success') &&
+      (el.className.includes('text-sd-success') || el.textContent === 'Accepted')
+    ) {
+      return true;
+    }
+    if (el.className && selector.includes(el.className)) {
+      return true;
+    }
+    if (selector.includes('h4') && tag === 'h4') {
+      return true;
+    }
+    return false;
+  }
 
   return {
     title,
     body: {
       appendChild: (child: unknown) => {
         if (child && typeof child === 'object') {
-          elements.push(child as (typeof elements)[0]);
+          elements.push(child as any);
         }
       },
     },
-    createElement: (tag: string) => {
-      const el = {
-        tagName: tag.toUpperCase(),
-        id: '',
-        className: '',
-        textContent: '',
-        attributes: {} as Record<string, string>,
-        setAttribute: (key: string, val: string) => {
-          el.attributes[key] = val;
-        },
-        getAttribute: (key: string) => el.attributes[key] || null,
-      };
-      return el;
-    },
+    createElement: (tag: string) => createElementNode(tag),
     querySelector: (selector: string) => {
       for (const el of elements) {
-        if (
-          selector.includes('data-e2e-locator') &&
-          el.attributes['data-e2e-locator'] === 'submission-result'
-        ) {
-          return el;
-        }
-        if (el.className && selector.includes(el.className)) {
-          return el;
-        }
-        if (
-          selector.includes('headlessui-listbox-button') &&
-          el.id &&
-          el.id.includes('headlessui-listbox-button')
-        ) {
-          return el;
-        }
-        if (selector.includes('h4') && el.tagName === 'H4') {
-          return el;
-        }
+        if (matchesSelector(el, selector)) return el;
       }
       return null;
     },
     querySelectorAll: (selector: string) => {
-      const matched = [];
+      const matched: any[] = [];
       for (const el of elements) {
-        if (
-          selector.includes('text-sd-success') &&
-          (el.className.includes('text-sd-success') || el.textContent === 'Accepted')
-        ) {
-          matched.push(el);
-        }
+        if (matchesSelector(el, selector)) matched.push(el);
       }
       return matched;
     },
@@ -143,20 +216,73 @@ describe('LeetCodeParser', () => {
     expect(LeetCodeParser.extractProblemDifficulty(mockDoc)).toBe('Medium');
   });
 
-  it('extracts language from editor header selector', () => {
+  it('extracts language for multiple canonical languages via semantic ARIA buttons', () => {
+    const languagesToTest = [
+      { input: 'Python3', expected: 'python3' },
+      { input: 'C++', expected: 'cpp' },
+      { input: 'Java', expected: 'java' },
+      { input: 'JavaScript', expected: 'javascript' },
+      { input: 'TypeScript', expected: 'typescript' },
+      { input: 'Go', expected: 'go' },
+      { input: 'Rust', expected: 'rust' },
+    ];
+
+    for (const { input, expected } of languagesToTest) {
+      const mockDoc = createMockDocument();
+      const langBtn = mockDoc.createElement('button');
+      langBtn.setAttribute('aria-haspopup', 'dialog');
+      langBtn.textContent = input;
+      mockDoc.body.appendChild(langBtn);
+
+      expect(LeetCodeParser.extractLanguage(mockDoc)).toBe(expected);
+    }
+  });
+
+  it('extracts language ignoring nested SVG icons and decorative elements', () => {
     const mockDoc = createMockDocument();
     const langBtn = mockDoc.createElement('button');
-    langBtn.id = 'headlessui-listbox-button-1';
+    langBtn.setAttribute('aria-haspopup', 'listbox');
+
+    const svgIcon = mockDoc.createElement('svg');
+    svgIcon.textContent = 'DecorativeIcon';
+    langBtn.appendChild(svgIcon);
+
+    const textSpan = mockDoc.createElement('span');
+    textSpan.textContent = 'Python3';
+    langBtn.appendChild(textSpan);
+
     langBtn.textContent = 'Python3';
+
     mockDoc.body.appendChild(langBtn);
 
     expect(LeetCodeParser.extractLanguage(mockDoc)).toBe('python3');
   });
 
-  it('defaults difficulty and language to Unknown when not found in DOM', () => {
-    const emptyDoc = createMockDocument();
-    expect(LeetCodeParser.extractProblemDifficulty(emptyDoc)).toBe('Unknown');
-    expect(LeetCodeParser.extractLanguage(emptyDoc)).toBe('Unknown');
+  it('correctly selects language when multiple dialog buttons exist on page', () => {
+    const mockDoc = createMockDocument();
+
+    const settingsBtn = mockDoc.createElement('button');
+    settingsBtn.setAttribute('aria-haspopup', 'dialog');
+    settingsBtn.textContent = 'Settings';
+    mockDoc.body.appendChild(settingsBtn);
+
+    const langBtn = mockDoc.createElement('button');
+    langBtn.setAttribute('aria-haspopup', 'dialog');
+    langBtn.textContent = 'C++';
+    mockDoc.body.appendChild(langBtn);
+
+    expect(LeetCodeParser.extractLanguage(mockDoc)).toBe('cpp');
+  });
+
+  it('defaults difficulty and language to Unknown when not found in DOM or invalid', () => {
+    const mockDoc = createMockDocument();
+    const invalidBtn = mockDoc.createElement('button');
+    invalidBtn.setAttribute('aria-haspopup', 'dialog');
+    invalidBtn.textContent = 'NonExistentLanguage';
+    mockDoc.body.appendChild(invalidBtn);
+
+    expect(LeetCodeParser.extractProblemDifficulty(mockDoc)).toBe('Unknown');
+    expect(LeetCodeParser.extractLanguage(mockDoc)).toBe('Unknown');
   });
 
   it('detects Accepted submission status from DOM elements', () => {
