@@ -2,7 +2,12 @@ import { ProblemDifficulty, SubmissionDetails } from '../types/leetcode';
 import { logger } from '../utils/logger';
 
 export type ExtensionEventType =
-  'SubmissionDetected' | 'SubmissionParsed' | 'SyncRequested' | 'SyncCompleted' | 'SyncFailed';
+  | 'SubmissionDetected'
+  | 'SolutionExtracted'
+  | 'SubmissionParsed'
+  | 'SyncRequested'
+  | 'SyncCompleted'
+  | 'SyncFailed';
 
 export interface ExtensionEvent<T = unknown> {
   type: ExtensionEventType;
@@ -77,6 +82,15 @@ export interface SubmissionDetectedPayload {
   submissionId?: string;
   url?: string;
   rawElementId?: string;
+}
+
+export interface SolutionExtractedPayload {
+  problemTitle: string;
+  problemSlug: string;
+  difficulty: ProblemDifficulty;
+  language: string;
+  code: string;
+  timestamp: number;
 }
 
 export interface SubmissionParsedPayload {
