@@ -8,6 +8,7 @@ export class SettingsModel implements UserExtensionSettings {
   public folderStructure: 'difficulty' | 'flat' | 'tag';
   public autoSync: boolean;
   public syncReadme: boolean;
+  public leetcodeUsername: string | null;
 
   constructor(settings?: Partial<UserExtensionSettings>) {
     this.githubToken = settings?.githubToken ?? DEFAULT_USER_SETTINGS.githubToken;
@@ -16,6 +17,7 @@ export class SettingsModel implements UserExtensionSettings {
     this.folderStructure = settings?.folderStructure ?? DEFAULT_USER_SETTINGS.folderStructure;
     this.autoSync = settings?.autoSync ?? DEFAULT_USER_SETTINGS.autoSync;
     this.syncReadme = settings?.syncReadme ?? DEFAULT_USER_SETTINGS.syncReadme;
+    this.leetcodeUsername = settings?.leetcodeUsername ?? DEFAULT_USER_SETTINGS.leetcodeUsername;
   }
 
   public isConfigured(): boolean {

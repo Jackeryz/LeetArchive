@@ -140,7 +140,7 @@
           </div>
 
           <div class="button-row">
-            <button id="validate-token-btn" class="btn secondary">Validate PAT</button>
+            <button id="validate-token-btn" class="btn primary">Validate Configuration</button>
             <button id="disconnect-btn" class="btn danger" style="display: none">
               Disconnect & Clear Credentials
             </button>
@@ -172,6 +172,64 @@
           <div class="button-row">
             <button id="test-connection-btn" class="btn primary">🔍 Test Connection & Save</button>
           </div>
+        </section>
+
+        <!-- SECTION 3: LEETCODE ACCOUNT LINKING -->
+        <section class="section">
+          <h2>3. Linked LeetCode Account</h2>
+          <p class="section-desc">
+            LeetArchive only archives solutions when the currently logged-in LeetCode account
+            matches your linked account.
+          </p>
+
+          <!-- Auto-detected container -->
+          <div
+            id="auto-detected-account-container"
+            class="field"
+            style="
+              display: none;
+              background: rgba(255, 255, 255, 0.05);
+              padding: 12px 16px;
+              border-radius: 8px;
+              border: 1px solid rgba(255, 255, 255, 0.1);
+            "
+          >
+            <p style="margin: 0 0 10px 0">
+              Detected LeetCode account:
+              <strong id="detected-username-display" style="color: #60a5fa; font-size: 1.1em"
+                >--</strong
+              >
+            </p>
+            <div class="button-row">
+              <button id="use-detected-account-btn" type="button" class="btn primary">
+                ✓ Use this account
+              </button>
+              <button id="choose-another-account-btn" type="button" class="btn secondary">
+                Choose another
+              </button>
+            </div>
+          </div>
+
+          <!-- Manual input container -->
+          <div id="manual-account-container" class="field" style="display: none">
+            <label for="leetcode-username">Linked LeetCode Username</label>
+            <div class="token-input-group">
+              <input
+                type="text"
+                id="leetcode-username"
+                placeholder="e.g. username_xyz"
+                autocomplete="off"
+              />
+              <button id="save-leetcode-username-btn" type="button" class="btn secondary">
+                Save Account
+              </button>
+            </div>
+            <span class="help-text"
+              >Enter your exact LeetCode profile username (case-insensitive).</span
+            >
+          </div>
+
+          <div id="linked-account-status" style="margin-top: 10px; font-weight: 500"></div>
         </section>
 
         <!-- SECTION 3: DIAGNOSTIC REPORT CARD -->

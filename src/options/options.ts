@@ -4,6 +4,7 @@ import { GitHubAuthService } from '../github/auth';
 import { RepositoryValidator, RepositoryValidationReport } from '../github/repository-validator';
 import { SecurityValidation } from '../security/validation';
 import { TokenSecurity } from '../security/token';
+import { LeetCodeAccountDetector } from '../leetcode/account-detector';
 import { logger } from '../utils/logger';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -21,6 +22,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reportCard = document.getElementById('test-report-card') as HTMLDivElement;
   const reportContent = document.getElementById('report-content') as HTMLDivElement;
   const statusToast = document.getElementById('save-status') as HTMLDivElement;
+
+  // Section 3: LeetCode Account Linking Elements
+  const autoDetectedContainer = document.getElementById(
+    'auto-detected-account-container',
+  ) as HTMLDivElement;
+  const detectedDisplay = document.getElementById('detected-username-display') as HTMLElement;
+  const useDetectedBtn = document.getElementById('use-detected-account-btn') as HTMLButtonElement;
+  const chooseAnotherBtn = document.getElementById(
+    'choose-another-account-btn',
+  ) as HTMLButtonElement;
+  const manualAccountContainer = document.getElementById(
+    'manual-account-container',
+  ) as HTMLDivElement;
+  const leetcodeUsernameInput = document.getElementById('leetcode-username') as HTMLInputElement;
+  const saveLeetcodeUsernameBtn = document.getElementById(
+    'save-leetcode-username-btn',
+  ) as HTMLButtonElement;
+  const accountStatusDisplay = document.getElementById('linked-account-status') as HTMLDivElement;
 
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   const authService = new GitHubAuthService();
@@ -41,6 +60,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Populate or auto-detect LeetCode account
+  if (settings.leetcodeUsername) {
+    leetcodeUsernameInput.value = settings.leetcodeUsername;
+    manualAccountContainer.style.display = 'block';
+    if (accountStatusDisplay) {
+      accountStatusDisplay.textContent = `Linked LeetCode Account: @${settings.leetcodeUsername}`;
+      accountStatusDisplay.style.color = '#34d399';
+    }
+  } else {
+    // Attempt automatic detection for onboarding
+    const detectedUsername = await LeetCodeAccountDetector.detectFromLeetCodeSite();
+    if (detectedUsername && autoDetectedContainer && detectedDisplay) {
+      detectedDisplay.textContent = `@${detectedUsername}`;
+      autoDetectedContainer.style.display = 'block';
+
+      useDetectedBtn.addEventListener('click', async () => {
+        await SettingsStorage.saveSettings({ leetcodeUsername: detectedUsername });
+        autoDetectedContainer.style.display = 'none';
+        leetcodeUsernameInput.value = detectedUsername;
+        manualAccountContainer.style.display = 'block';
+        if (accountStatusDisplay) {
+          accountStatusDisplay.textContent = `Linked LeetCode Account: @${detectedUsername}`;
+          accountStatusDisplay.style.color = '#34d399';
+        }
+        showToast(`Linked LeetCode account saved as @${detectedUsername}`, 'success');
+      });
+
+      chooseAnotherBtn.addEventListener('click', () => {
+        autoDetectedContainer.style.display = 'none';
+        manualAccountContainer.style.display = 'block';
+      });
+    } else {
+      manualAccountContainer.style.display = 'block';
+    }
+  }
+
+  if (saveLeetcodeUsernameBtn) {
+    saveLeetcodeUsernameBtn.addEventListener('click', async () => {
+      const rawUser = leetcodeUsernameInput.value;
+      const validated = LeetCodeAccountDetector.cleanAndValidateUsername(rawUser);
+
+      if (!validated) {
+        showToast('Please enter a valid LeetCode username', 'error');
+        return;
+      }
+
+      await SettingsStorage.saveSettings({ leetcodeUsername: validated });
+      leetcodeUsernameInput.value = validated;
+      if (accountStatusDisplay) {
+        accountStatusDisplay.textContent = `Linked LeetCode Account: @${validated}`;
+        accountStatusDisplay.style.color = '#34d399';
+      }
+      showToast(`Linked LeetCode account updated to @${validated}`, 'success');
+    });
+  }
+
   // Toggle token input visibility
   if (toggleVisibilityBtn) {
     toggleVisibilityBtn.addEventListener('click', () => {
@@ -54,35 +129,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Validate PAT button
-  if (validateBtn) {
-    validateBtn.addEventListener('click', async () => {
-      const rawToken = tokenInput.value;
-      const sanitizedToken = TokenSecurity.sanitizeToken(rawToken);
+  const runComprehensiveValidation = async (): Promise<void> => {
+    const rawToken = tokenInput.value;
+    const sanitizedToken = TokenSecurity.sanitizeToken(rawToken);
+    const rawUrl = repoUrlInput.value;
 
-      if (!sanitizedToken) {
-        showToast('Please enter a GitHub Fine-Grained PAT token', 'error');
-        return;
-      }
-      tokenInput.value = sanitizedToken;
+    if (!sanitizedToken) {
+      showToast('Please enter a GitHub Fine-Grained PAT token', 'error');
+      return;
+    }
+    if (!rawUrl || !rawUrl.trim()) {
+      showToast('Please enter a GitHub repository URL or owner/repository name', 'error');
+      return;
+    }
 
+    const repoInfo = SecurityValidation.parseGitHubRepoUrl(rawUrl);
+    if (!repoInfo) {
+      showToast(
+        'Invalid repository URL. Format must be https://github.com/owner/repository or owner/repository.',
+        'error',
+      );
+      return;
+    }
+
+    tokenInput.value = sanitizedToken;
+    if (validateBtn) {
       validateBtn.disabled = true;
-      validateBtn.textContent = 'Validating PAT...';
+      validateBtn.textContent = 'Validating Configuration...';
+    }
+    if (testConnBtn) {
+      testConnBtn.disabled = true;
+      testConnBtn.textContent = 'Validating...';
+    }
 
-      const result = await authService.validateToken(sanitizedToken);
+    const validator = new RepositoryValidator(sanitizedToken);
+    const report = await validator.validateRepositoryScope(repoInfo.fullName);
 
+    if (validateBtn) {
       validateBtn.disabled = false;
-      validateBtn.textContent = 'Validate PAT';
+      validateBtn.textContent = 'Validate Configuration';
+    }
+    if (testConnBtn) {
+      testConnBtn.disabled = false;
+      testConnBtn.textContent = '🔍 Test Connection & Save';
+    }
 
-      if (result.user) {
-        await SecretsStorage.setToken(sanitizedToken);
-        disconnectBtn.style.display = 'inline-block';
-        showToast(`Authenticated as @${result.user.login}`, 'success');
-      } else {
-        showToast(`Authentication failed: ${result.error || 'Invalid token'}`, 'error');
-        updateStatusBadge(false);
-      }
-    });
+    const defaultBranch = report.repoDetails?.defaultBranch || 'main';
+
+    if (report.isValid) {
+      const finalRepo = report.repoDetails?.fullName || repoInfo.fullName;
+      await SecretsStorage.setToken(sanitizedToken);
+      await SettingsStorage.saveSettings({
+        selectedRepo: finalRepo,
+        branch: defaultBranch,
+      });
+
+      repoUrlInput.value = `https://github.com/${finalRepo}`;
+      disconnectBtn.style.display = 'inline-block';
+      showToast('✓ GitHub configuration verified', 'success');
+    } else {
+      showToast('❌ GitHub configuration validation failed', 'error');
+    }
+
+    renderDiagnosticReport(report);
+    updateStatusBadge(report.isValid);
+  };
+
+  // Validate Configuration button
+  if (validateBtn) {
+    validateBtn.addEventListener('click', runComprehensiveValidation);
+  }
+
+  // Test Connection & Save button
+  if (testConnBtn) {
+    testConnBtn.addEventListener('click', runComprehensiveValidation);
   }
 
   // Disconnect button
@@ -106,68 +226,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Test Connection & Save button
-  if (testConnBtn) {
-    testConnBtn.addEventListener('click', async () => {
-      const token = TokenSecurity.sanitizeToken(
-        tokenInput.value || (await SecretsStorage.getToken()) || '',
-      );
-      const rawUrl = repoUrlInput.value;
-
-      if (!token) {
-        showToast('Please enter a GitHub Fine-Grained PAT token', 'error');
-        return;
-      }
-      if (!rawUrl || !rawUrl.trim()) {
-        showToast('Please enter a GitHub repository URL or owner/repository name', 'error');
-        return;
-      }
-
-      const repoInfo = SecurityValidation.parseGitHubRepoUrl(rawUrl);
-      if (!repoInfo) {
-        showToast(
-          'Invalid repository URL. Format must be https://github.com/owner/repository or owner/repository.',
-          'error',
-        );
-        return;
-      }
-
-      testConnBtn.disabled = true;
-      testConnBtn.textContent = 'Validating & Testing...';
-
-      const validator = new RepositoryValidator(token);
-      const report = await validator.validateRepositoryScope(repoInfo.fullName);
-
-      testConnBtn.disabled = false;
-      testConnBtn.textContent = '🔍 Test Connection & Save';
-
-      const defaultBranch = report.repoDetails?.defaultBranch || 'main';
-
-      if (report.isValid) {
-        const finalRepo = report.repoDetails?.fullName || repoInfo.fullName;
-        await SecretsStorage.setToken(token);
-        await SettingsStorage.saveSettings({
-          selectedRepo: finalRepo,
-          branch: defaultBranch,
-        });
-
-        repoUrlInput.value = `https://github.com/${finalRepo}`;
-        showToast(
-          `Connection verified! Target repository '${finalRepo}' (branch: ${defaultBranch}) configured successfully.`,
-          'success',
-        );
-      } else {
-        showToast(
-          `Validation failed: ${report.errors[0] || 'Unable to access repository'}`,
-          'error',
-        );
-      }
-
-      renderDiagnosticReport(report, repoInfo.owner, repoInfo.repo, defaultBranch);
-      updateStatusBadge(report.isValid);
-    });
-  }
-
   function updateStatusBadge(connected: boolean): void {
     if (!statusBadge) return;
     if (connected) {
@@ -179,50 +237,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function renderDiagnosticReport(
-    report: RepositoryValidationReport,
-    owner: string,
-    repo: string,
-    branch: string,
-  ): void {
+  function renderDiagnosticReport(report: RepositoryValidationReport): void {
     reportCard.style.display = 'block';
     reportContent.innerHTML = '';
 
-    const displayOwner = report.repoDetails?.fullName
-      ? report.repoDetails.fullName.split('/')[0]
-      : owner;
-    const displayRepo = report.repoDetails?.fullName
-      ? report.repoDetails.fullName.split('/')[1]
-      : repo;
+    const formattedLines = report.formattedOutput
+      .split('\n')
+      .map((line) => SecurityValidation.escapeHtml(line))
+      .join('<br/>');
 
-    const statusHtml = `
-      <div class="report-summary ${report.isValid ? 'success' : 'failure'}">
-        <strong>${report.isValid ? 'GitHub Connected' : 'Validation Failed'}</strong>
-      </div>
-      <div class="report-details" style="margin: 12px 0;">
-        <p><strong>Owner:</strong> ${SecurityValidation.escapeHtml(displayOwner)}</p>
-        <p><strong>Repository:</strong> ${SecurityValidation.escapeHtml(displayRepo)}</p>
-        <p><strong>Default Branch:</strong> ${SecurityValidation.escapeHtml(branch)}</p>
-        <p><strong>Authentication:</strong> Fine-Grained PAT</p>
-      </div>
-      <ul class="report-checklist">
-        <li class="${report.hasMetadataAccess ? 'pass' : 'fail'}">${report.hasMetadataAccess ? '✓' : '❌'} Metadata (Read)</li>
-        <li class="${report.hasWritePermission ? 'pass' : 'fail'}">${report.hasWritePermission ? '✓' : '❌'} Contents (Read & Write)</li>
-      </ul>
-      <div class="report-status ${report.isValid ? 'pass' : 'fail'}" style="margin-top: 10px;">
-        <strong>Status:</strong> ${report.isValid ? '✓ Ready' : '❌ Incomplete Configuration'}
+    reportContent.innerHTML = `
+      <div class="report-summary ${report.isValid ? 'success' : 'failure'}" style="font-family: monospace; white-space: pre-wrap; line-height: 1.6; padding: 16px; border-radius: 8px;">
+        ${formattedLines}
       </div>
     `;
-
-    let notesHtml = '';
-    if (report.errors.length > 0) {
-      notesHtml += `<div class="report-errors" style="margin-top: 10px;"><strong>Errors:</strong><ul>${report.errors.map((e) => `<li>${SecurityValidation.escapeHtml(e)}</li>`).join('')}</ul></div>`;
-    }
-    if (report.warnings.length > 0) {
-      notesHtml += `<div class="report-warnings" style="margin-top: 10px;"><strong>Notes / Scope Info:</strong><ul>${report.warnings.map((w) => `<li>${SecurityValidation.escapeHtml(w)}</li>`).join('')}</ul></div>`;
-    }
-
-    reportContent.innerHTML = statusHtml + notesHtml;
   }
 
   function showToast(message: string, type: 'success' | 'error' | 'info'): void {

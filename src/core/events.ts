@@ -5,6 +5,8 @@ export type ExtensionEventType =
   | 'SubmissionDetected'
   | 'SolutionExtracted'
   | 'ArchiveGenerated'
+  | 'AccountVerified'
+  | 'ArchivePublished'
   | 'SubmissionParsed'
   | 'SyncRequested'
   | 'SyncCompleted'
@@ -109,6 +111,20 @@ export interface ArchiveGeneratedPayload {
   timestamp: number;
   archiveMode: ArchiveMode;
   files: VirtualFile[];
+}
+
+export interface AccountVerifiedPayload {
+  username: string;
+  archive: ArchiveGeneratedPayload;
+  verifiedAt: number;
+}
+
+export interface ArchivePublishedPayload {
+  repository: string;
+  branch: string;
+  commitSha: string;
+  committedFiles: number;
+  publishedAt: number;
 }
 
 export interface SubmissionParsedPayload {

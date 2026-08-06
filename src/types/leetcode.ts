@@ -48,4 +48,5 @@ export interface UserExtensionSettings {
   folderStructure: 'difficulty' | 'flat' | 'tag';
   autoSync: boolean;
   syncReadme: boolean;
+  leetcodeUsername?: string | null;
 }

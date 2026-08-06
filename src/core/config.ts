@@ -18,4 +18,5 @@ export const DEFAULT_USER_SETTINGS = {
   folderStructure: 'difficulty' as const,
   autoSync: true,
   syncReadme: true,
+  leetcodeUsername: null as string | null,
 };
