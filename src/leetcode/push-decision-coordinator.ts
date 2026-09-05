@@ -46,7 +46,7 @@ export class PushDecisionCoordinator {
   ): Promise<'ask' | 'automatic' | 'never'> {
     const settings = await SettingsStorage.getSettings();
     const pushBehavior = settings.pushBehavior || 'ask';
-    const requestId = `req_${payload.verifiedAt || Date.now()}_${payload.archive.problemSlug}`;
+    const requestId = `req_${payload.verifiedAt || Date.now()}_${Math.random().toString(36).slice(2, 7)}_${payload.archive.problemSlug}`;
 
     logger.info(
       `[PushDecisionCoordinator] AccountVerified received for '${payload.archive.problemSlug}'. PushBehavior: '${pushBehavior}'`,
@@ -54,7 +54,7 @@ export class PushDecisionCoordinator {
 
     if (pushBehavior === 'automatic') {
       logger.info(
-        `[PushDecisionCoordinator] Automatic mode: Publishing PushRequested for '${payload.archive.problemSlug}'`,
+        `[PushDecisionCoordinator] Automatic mode: Publishing PushRequested for '${payload.archive.problemSlug}' (requestId: '${requestId}')`,
       );
       const pushPayload: PushRequestedPayload = {
         requestId,

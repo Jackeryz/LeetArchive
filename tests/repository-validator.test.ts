@@ -102,7 +102,8 @@ describe('RepositoryValidator & Fine-Grained PAT Authorization Probe', () => {
       headers: new Headers(),
       json: async () => ({
         message: 'Resource not accessible by personal access token',
-        documentation_url: 'https://docs.github.com/rest/overview/resources-in-the-rest-api#authentication',
+        documentation_url:
+          'https://docs.github.com/rest/overview/resources-in-the-rest-api#authentication',
       }),
     });
 
@@ -229,9 +230,7 @@ describe('RepositoryValidator & Fine-Grained PAT Authorization Probe', () => {
     expect(report.isValid).toBe(false);
     expect(report.hasWritePermission).toBe(false);
     expect(report.status).toBe('repository-inaccessible');
-    expect(report.formattedOutput).toContain(
-      '✕ Repository authorization verification failed',
-    );
+    expect(report.formattedOutput).toContain('✕ Repository authorization verification failed');
     expect(report.formattedOutput).not.toContain('Contents: Read & Write');
   });
 

@@ -1,4 +1,15 @@
-﻿import { EventBus } from '../core/events';
+﻿import {
+  AccountVerifiedPayload,
+  ArchiveGeneratedPayload,
+  ArchivePublishedPayload,
+  ArchivePublishFailedPayload,
+  EventBus,
+  PushCancelledPayload,
+  PushPromptRequestedPayload,
+  PushRequestedPayload,
+  SolutionExtractedPayload,
+  SubmissionDetectedPayload,
+} from '../core/events';
 import { LeetCodeObserver } from '../leetcode/observer';
 import { SolutionExtractor } from '../leetcode/extractor';
 import { ArchiveGenerator } from '../leetcode/archive-generator';
@@ -19,41 +30,58 @@ const pushCoordinator = new PushDecisionCoordinator();
 const pushUI = new PushNotificationUI();
 const publisher = new GitHubPublisher();
 
-// Subscribe to events for debugging/logging
-eventBus.subscribe('SubmissionDetected', (event) => {
-  logger.info(`[EventBus] SubmissionDetected event emitted: ${JSON.stringify(event.payload)}`);
+// Subscribe to events for debugging/logging safely without logging raw source code
+eventBus.subscribe<SubmissionDetectedPayload>('SubmissionDetected', (event) => {
+  logger.info(
+    `[EventBus] SubmissionDetected: slug='${event.payload.problemSlug}', lang='${event.payload.language}', subId='${event.payload.submissionId || 'none'}'`,
+  );
 });
 
-eventBus.subscribe('SolutionExtracted', (event) => {
-  logger.info(`[EventBus] SolutionExtracted event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<SolutionExtractedPayload>('SolutionExtracted', (event) => {
+  const code = event.payload.code || '';
+  logger.info(
+    `[EventBus] SolutionExtracted: slug='${event.payload.problemSlug}', lang='${event.payload.language}', len=${code.length}`,
+  );
 });
 
-eventBus.subscribe('ArchiveGenerated', (event) => {
-  logger.info(`[EventBus] ArchiveGenerated event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<ArchiveGeneratedPayload>('ArchiveGenerated', (event) => {
+  logger.info(
+    `[EventBus] ArchiveGenerated: slug='${event.payload.problemSlug}', mode='${event.payload.archiveMode}', files=${event.payload.files.length}`,
+  );
 });
 
-eventBus.subscribe('AccountVerified', (event) => {
-  logger.info(`[EventBus] AccountVerified event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<AccountVerifiedPayload>('AccountVerified', (event) => {
+  logger.info(
+    `[EventBus] AccountVerified: username='${event.payload.username}', slug='${event.payload.archive.problemSlug}'`,
+  );
 });
 
-eventBus.subscribe('PushPromptRequested', (event) => {
-  logger.info(`[EventBus] PushPromptRequested event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<PushPromptRequestedPayload>('PushPromptRequested', (event) => {
+  logger.info(`[EventBus] PushPromptRequested: reqId='${event.payload.requestId}'`);
 });
 
-eventBus.subscribe('PushRequested', (event) => {
-  logger.info(`[EventBus] PushRequested event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<PushRequestedPayload>('PushRequested', (event) => {
+  logger.info(
+    `[EventBus] PushRequested: reqId='${event.payload.requestId}', slug='${event.payload.verifiedPayload.archive.problemSlug}', files=${event.payload.verifiedPayload.archive.files.length}`,
+  );
 });
 
-eventBus.subscribe('PushCancelled', (event) => {
-  logger.info(`[EventBus] PushCancelled event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<PushCancelledPayload>('PushCancelled', (event) => {
+  logger.info(
+    `[EventBus] PushCancelled: reqId='${event.payload.requestId}', reason='${event.payload.reason}'`,
+  );
 });
 
-eventBus.subscribe('ArchivePublished', (event) => {
-  logger.info(`[EventBus] ArchivePublished event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<ArchivePublishedPayload>('ArchivePublished', (event) => {
+  logger.info(
+    `[EventBus] ArchivePublished: repo='${event.payload.repository}', commitSha='${event.payload.commitSha}', committedFiles=${event.payload.committedFiles}`,
+  );
 });
 
-eventBus.subscribe('ArchivePublishFailed', (event) => {
-  logger.info(`[EventBus] ArchivePublishFailed event emitted: ${JSON.stringify(event.payload)}`);
+eventBus.subscribe<ArchivePublishFailedPayload>('ArchivePublishFailed', (event) => {
+  logger.info(
+    `[EventBus] ArchivePublishFailed: reqId='${event.payload.requestId}', error='${event.payload.error}'`,
+  );
 });
 
 // Start monitoring DOM and processing pipeline

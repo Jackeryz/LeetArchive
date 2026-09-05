@@ -64,11 +64,7 @@ function createMockDocument(
     querySelectorAll: (selector: string) => {
       if (isVirtualized && selector.includes('.line-numbers')) {
         // Virtualized editor scrolled down to line 25
-        return [
-          { textContent: '25' },
-          { textContent: '26' },
-          { textContent: '27' },
-        ];
+        return [{ textContent: '25' }, { textContent: '26' }, { textContent: '27' }];
       }
 
       const matches: any[] = [];
@@ -319,6 +315,36 @@ describe('SolutionExtractor \u2014 Complete Extraction & Virtualization Safeguar
     expect(result.problemSlug).toBe('two-sum');
     expect(result.difficulty).toBe('Easy');
     expect(result.language).toBe('python3');
+  });
+
+  it('extracts NEW updated solution upon second submission and does not reuse stale code', async () => {
+    let currentModelCode = 'def twoSum():\n    # First solution\n    return [0, 1]\n';
+
+    (globalThis.window as any).monaco = {
+      editor: {
+        getModels: () => [
+          {
+            getValue: () => currentModelCode,
+            getLanguageId: () => 'python',
+          },
+        ],
+      },
+    };
+
+    // First extraction
+    const firstCode = await extractor.extractSolutionCode();
+    expect(firstCode).toBe('def twoSum():\n    # First solution\n    return [0, 1]\n');
+
+    // User updates editor code for a second submission on same problem
+    currentModelCode =
+      'def twoSum():\n    # Second updated solution\n    return [hash_map[diff], i]\n';
+
+    // Second extraction must return the NEW solution, not the first
+    const secondCode = await extractor.extractSolutionCode();
+    expect(secondCode).toBe(
+      'def twoSum():\n    # Second updated solution\n    return [hash_map[diff], i]\n',
+    );
+    expect(secondCode).not.toBe(firstCode);
   });
 
   it('extracts non-virtualized small snippet via Strategy 2 (.view-line) when editor has no scrollbar', async () => {

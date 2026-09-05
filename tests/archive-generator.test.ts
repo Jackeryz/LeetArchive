@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveGenerator } from '../src/leetcode/archive-generator';
 import { generateReadme } from '../src/leetcode/readme';
 import { getSolutionFilename } from '../src/utils/constants';
+import { hashContent } from '../src/utils/helpers';
 import { ArchiveGeneratedPayload, EventBus, SolutionExtractedPayload } from '../src/core/events';
 
 describe('Language-to-Filename Mapping', () => {
@@ -203,5 +204,48 @@ describe('ArchiveGenerator', () => {
       expect(archive).not.toBeNull();
       expect(archive?.files[1].path).toBe(expectedFilename);
     }
+  });
+
+  it('Critical Check 1: Successive submissions for same problem generate archives strictly from CURRENT solution code without retaining previous state', () => {
+    const code1 =
+      'def twoSum(nums, target):\n    # First submission\n    for i in range(len(nums)):\n        for j in range(i+1, len(nums)):\n            if nums[i] + nums[j] == target: return [i, j]\n';
+    const code2 =
+      'def twoSum(nums, target):\n    # Second submission (hash map)\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen: return [seen[target - n], i]\n        seen[n] = i\n';
+
+    const hash1 = hashContent(code1);
+    const hash2 = hashContent(code2);
+    expect(hash1).not.toBe(hash2);
+
+    // First archive generation
+    const archive1 = generator.generateArchive({
+      problemTitle: 'Two Sum',
+      problemSlug: 'two-sum',
+      difficulty: 'Easy',
+      language: 'python3',
+      code: code1,
+      timestamp: 1700000000000,
+    });
+    expect(archive1).not.toBeNull();
+    const solutionFile1 = archive1!.files.find((f) => f.path === 'Two Sum/solution.py');
+    expect(solutionFile1).toBeDefined();
+    expect(hashContent(solutionFile1!.content)).toBe(hash1);
+
+    // Second archive generation for the same problem with new code
+    const archive2 = generator.generateArchive({
+      problemTitle: 'Two Sum',
+      problemSlug: 'two-sum',
+      difficulty: 'Easy',
+      language: 'python3',
+      code: code2,
+      timestamp: 1700000005000,
+    });
+    expect(archive2).not.toBeNull();
+    const solutionFile2 = archive2!.files.find((f) => f.path === 'Two Sum/solution.py');
+    expect(solutionFile2).toBeDefined();
+
+    // Critical Check: second archive must contain hash2, NOT hash1
+    expect(hashContent(solutionFile2!.content)).toBe(hash2);
+    expect(hashContent(solutionFile2!.content)).not.toBe(hash1);
+    expect(solutionFile2!.content).toBe(code2);
   });
 });

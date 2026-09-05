@@ -1,5 +1,11 @@
 ﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountVerifiedPayload, EventBus, PushCancelledPayload, PushPromptRequestedPayload, PushRequestedPayload } from '../src/core/events';
+import {
+  AccountVerifiedPayload,
+  EventBus,
+  PushCancelledPayload,
+  PushPromptRequestedPayload,
+  PushRequestedPayload,
+} from '../src/core/events';
 import { PushDecisionCoordinator } from '../src/leetcode/push-decision-coordinator';
 import { SettingsStorage } from '../src/storage/settings';
 

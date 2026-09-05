@@ -9,11 +9,19 @@ interface MonacoModel {
   getValue: () => string;
   getLineCount?: () => number;
   getLanguageId?: () => string;
+  getVersionId?: () => number;
   uri?: { toString: () => string; path?: string };
+}
+
+interface MonacoCodeEditor {
+  getModel: () => MonacoModel | null;
+  getDomNode?: () => HTMLElement | null;
+  hasTextFocus?: () => boolean;
 }
 
 interface MonacoEditorGlobal {
   getModels?: () => MonacoModel[];
+  getEditors?: () => MonacoCodeEditor[];
   onDidCreateModel?: (callback: (model: MonacoModel) => void) => { dispose: () => void };
 }
 
@@ -24,6 +32,55 @@ interface MonacoGlobal {
 function getMonacoGlobal(): MonacoGlobal | undefined {
   if (typeof window === 'undefined') return undefined;
   return (window as unknown as { monaco?: MonacoGlobal }).monaco;
+}
+
+/**
+ * Retrieves the model currently attached to the active or visible Monaco editor instance in the DOM.
+ */
+function getActiveEditorModel(monaco: MonacoGlobal): MonacoModel | null {
+  try {
+    if (!monaco?.editor || typeof monaco.editor.getEditors !== 'function') return null;
+    const editors = monaco.editor.getEditors();
+    if (!editors || editors.length === 0) return null;
+
+    // 1. Check focused editor first
+    for (const ed of editors) {
+      if (typeof ed.hasTextFocus === 'function' && ed.hasTextFocus()) {
+        const m = ed.getModel();
+        if (m && m.getValue().trim()) return m;
+      }
+    }
+
+    // 2. Check editor attached to active DOM
+    for (const ed of editors) {
+      const node = typeof ed.getDomNode === 'function' ? ed.getDomNode() : null;
+      if (node && typeof document !== 'undefined' && document.body.contains(node)) {
+        const m = ed.getModel();
+        if (m) {
+          const lang = typeof m.getLanguageId === 'function' ? m.getLanguageId() : '';
+          if (lang && lang !== 'plaintext' && lang !== 'markdown' && lang !== 'json') {
+            const val = m.getValue();
+            if (val && val.trim()) return m;
+          }
+        }
+      }
+    }
+
+    // 3. Fallback: Any editor with valid code
+    for (const ed of editors) {
+      const m = ed.getModel();
+      if (m) {
+        const lang = typeof m.getLanguageId === 'function' ? m.getLanguageId() : '';
+        if (lang && lang !== 'plaintext' && lang !== 'markdown' && lang !== 'json') {
+          const val = m.getValue();
+          if (val && val.trim()) return m;
+        }
+      }
+    }
+  } catch {
+    // Ignore editor inspection errors
+  }
+  return null;
 }
 
 /**
@@ -43,16 +100,36 @@ function selectSolutionModel(models: MonacoModel[]): MonacoModel | null {
   }
 
   // 2. Check for URI hints
-  for (const m of models) {
+  for (const m of codeModels.length > 0 ? codeModels : models) {
     const uri = m.uri ? m.uri.toString().toLowerCase() : '';
     if (uri.includes('solution') || uri.includes('code') || uri.includes('editor')) {
       return m;
     }
   }
 
-  // 3. Select model with highest character count among code models or all models
+  // 3. Prefer model with higher versionId (user edits increment versionId)
   const candidateList = codeModels.length > 0 ? codeModels : models;
   let best = candidateList[0];
+  const initialGetVer = best.getVersionId;
+  let bestVersion = typeof initialGetVer === 'function' ? initialGetVer.call(best) : 0;
+  let hasVersionComparison = false;
+
+  for (let i = 1; i < candidateList.length; i++) {
+    const candidate = candidateList[i];
+    const candGetVer = candidate.getVersionId;
+    const v = typeof candGetVer === 'function' ? candGetVer.call(candidate) : 0;
+    if (v > bestVersion) {
+      best = candidate;
+      bestVersion = v;
+      hasVersionComparison = true;
+    }
+  }
+
+  if (hasVersionComparison && bestVersion > 1) {
+    return best;
+  }
+
+  // 4. If no version distinction, select model with highest non-empty character count
   let maxLen = best.getValue().length;
   for (let i = 1; i < candidateList.length; i++) {
     const val = candidateList[i].getValue();
@@ -77,33 +154,52 @@ function extractFromMonaco(): {
 } {
   try {
     const monaco = getMonacoGlobal();
-    if (!monaco || !monaco.editor || typeof monaco.editor.getModels !== 'function') {
+    if (!monaco || !monaco.editor) {
       return { code: null, modelCount: 0, lineCount: 0 };
     }
 
-    const models = monaco.editor.getModels();
-    if (!models || models.length === 0) {
-      return { code: null, modelCount: 0, lineCount: 0 };
+    // 1. Check active editor model directly
+    const activeModel = getActiveEditorModel(monaco);
+    if (activeModel) {
+      const code = activeModel.getValue();
+      const lineCount =
+        typeof activeModel.getLineCount === 'function'
+          ? activeModel.getLineCount()
+          : code.split('\n').length;
+      return {
+        code: code || null,
+        modelCount:
+          typeof monaco.editor.getModels === 'function' ? monaco.editor.getModels().length : 1,
+        lineCount,
+        uri: activeModel.uri ? activeModel.uri.toString() : undefined,
+        language:
+          typeof activeModel.getLanguageId === 'function' ? activeModel.getLanguageId() : undefined,
+      };
     }
 
-    const model = selectSolutionModel(models);
-    if (!model) {
-      return { code: null, modelCount: models.length, lineCount: 0 };
+    // 2. Fall back to model registry
+    if (typeof monaco.editor.getModels === 'function') {
+      const models = monaco.editor.getModels();
+      if (models && models.length > 0) {
+        const model = selectSolutionModel(models);
+        if (model) {
+          const code = model.getValue();
+          const lineCount =
+            typeof model.getLineCount === 'function'
+              ? model.getLineCount()
+              : code.split('\n').length;
+          return {
+            code: code || null,
+            modelCount: models.length,
+            lineCount,
+            uri: model.uri ? model.uri.toString() : undefined,
+            language: typeof model.getLanguageId === 'function' ? model.getLanguageId() : undefined,
+          };
+        }
+      }
     }
 
-    const code = model.getValue();
-    const lineCount =
-      typeof model.getLineCount === 'function' ? model.getLineCount() : code.split('\n').length;
-    const uri = model.uri ? model.uri.toString() : undefined;
-    const language = typeof model.getLanguageId === 'function' ? model.getLanguageId() : undefined;
-
-    return {
-      code: code || null,
-      modelCount: models.length,
-      lineCount,
-      uri,
-      language,
-    };
+    return { code: null, modelCount: 0, lineCount: 0 };
   } catch {
     return { code: null, modelCount: 0, lineCount: 0 };
   }
@@ -180,15 +276,13 @@ if (typeof window !== 'undefined') {
   });
 
   // 3. Proactively sync code to DOM cache
-  const syncInterval = setInterval(() => {
+  setInterval(() => {
     const monaco = getMonacoGlobal();
-    if (monaco?.editor?.getModels) {
+    if (monaco?.editor) {
       const res = extractFromMonaco();
       if (res.code) {
         syncToDomCache(res.code);
       }
     }
   }, 1000);
-
-  setTimeout(() => clearInterval(syncInterval), 60000);
 }

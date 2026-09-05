@@ -376,6 +376,72 @@ describe('LeetCodeObserver & Event System', () => {
     expect(callCount).toBe(2);
   });
 
+  it('Requirement C: emits new SubmissionDetected when submissionId changes even if DOM remained in Accepted state', () => {
+    let callCount = 0;
+    const emittedSubmissions: string[] = [];
+    eventBus.subscribe<SubmissionDetectedPayload>('SubmissionDetected', (e) => {
+      callCount++;
+      if (e.payload.submissionId) emittedSubmissions.push(e.payload.submissionId);
+    });
+
+    let currentSubId: string | undefined = 'sub_111';
+
+    vi.spyOn(LeetCodeParser, 'detectAcceptedSubmission').mockImplementation(() => ({
+      isAccepted: true,
+      submissionId: currentSubId,
+    }));
+
+    vi.spyOn(LeetCodeParser, 'extractSubmissionMetadata').mockImplementation(() => ({
+      problemTitle: 'Two Sum',
+      problemSlug: 'two-sum',
+      difficulty: 'Easy',
+      language: 'python3',
+      timestamp: Date.now(),
+      submissionId: currentSubId,
+    }));
+
+    // First submission
+    observer.checkSubmissionResult();
+    expect(callCount).toBe(1);
+
+    // Same submission repeated while in Accepted state -> deduplicated
+    observer.checkSubmissionResult();
+    expect(callCount).toBe(1);
+
+    // Second submission arrives with NEW submissionId without DOM leaving Accepted state
+    currentSubId = 'sub_222';
+    observer.checkSubmissionResult();
+
+    // Must emit for second submission!
+    expect(callCount).toBe(2);
+    expect(emittedSubmissions).toEqual(['sub_111', 'sub_222']);
+  });
+
+  it('allows second submission for same problem when resetSubmissionLock is triggered', () => {
+    let callCount = 0;
+    eventBus.subscribe('SubmissionDetected', () => {
+      callCount++;
+    });
+
+    vi.spyOn(LeetCodeParser, 'detectAcceptedSubmission').mockReturnValue({ isAccepted: true });
+    vi.spyOn(LeetCodeParser, 'extractSubmissionMetadata').mockReturnValue({
+      problemTitle: 'Two Sum',
+      problemSlug: 'two-sum',
+      difficulty: 'Easy',
+      language: 'python3',
+      timestamp: Date.now(),
+    });
+
+    observer.checkSubmissionResult();
+    expect(callCount).toBe(1);
+
+    // Resets lock (simulating user clicking Submit or pressing shortcut)
+    observer.resetSubmissionLock();
+
+    observer.checkSubmissionResult();
+    expect(callCount).toBe(2);
+  });
+
   it('handles observer start and stop teardown cleanly', () => {
     expect(() => {
       observer.start();

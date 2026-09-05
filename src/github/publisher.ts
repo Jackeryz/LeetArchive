@@ -1,4 +1,4 @@
-﻿import {
+import {
   AccountVerifiedPayload,
   ArchivePublishedPayload,
   ArchivePublishFailedPayload,
@@ -9,17 +9,9 @@ import { SecretsStorage } from '../storage/secrets';
 import { SettingsStorage } from '../storage/settings';
 import { APP_CONFIG } from '../core/config';
 import { logger } from '../utils/logger';
+import { decodeBase64Utf8, encodeBase64Utf8 } from '../utils/helpers';
 
-/**
- * Safely encodes a string into Base64 format supporting UTF-8 Unicode characters.
- */
-export function encodeBase64Utf8(str: string): string {
-  return btoa(
-    encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) =>
-      String.fromCharCode(parseInt(p1, 16)),
-    ),
-  );
-}
+export { decodeBase64Utf8, encodeBase64Utf8 };
 
 /**
  * Reads and logs non-2xx GitHub API response bodies for debugging.
@@ -305,6 +297,7 @@ export class GitHubPublisher {
       const getUrl = `${apiUrl}?ref=${encodeURIComponent(branch)}`;
       logger.info(`[GitHubPublisher] GitHub API Request (GET contents): ${getUrl}`);
       const getResponse = await fetch(getUrl, {
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
@@ -362,6 +355,7 @@ export class GitHubPublisher {
       if (putResponse.ok) {
         const putData = await putResponse.json();
         const commitSha = putData?.commit?.sha || putData?.content?.sha || '';
+        logger.info(`[GitHubPublisher] File '${filePath}' uploaded successfully.`);
         return { success: true, commitSha };
       }
 

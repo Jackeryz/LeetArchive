@@ -80,7 +80,7 @@ export class SolutionExtractor {
     }
     const finalLines = code.split('\n').length;
     logger.info(
-      `[SolutionExtractor] Final extracted code for '${payload.problemSlug}': length=${code.length}, lines=${finalLines}`,
+      `[SolutionExtractor] Extracted solution for '${payload.problemSlug}' (${payload.language}): length=${code.length}, lines=${finalLines}`,
     );
 
     const solutionPayload: SolutionExtractedPayload = {
@@ -174,21 +174,8 @@ export class SolutionExtractor {
     const documentObj = doc || (typeof document !== 'undefined' ? document : null);
     if (!documentObj) return null;
 
-    // 1. Check synchronous DOM cache element populated by page bridge
-    try {
-      const cacheEl = documentObj.getElementById('__leetarchive_monaco_cache__');
-      if (cacheEl && cacheEl.textContent && cacheEl.textContent.trim()) {
-        const cached = cacheEl.textContent;
-        logger.info(
-          `[SolutionExtractor] Found cached Monaco code in DOM bridge element (length: ${cached.length})`,
-        );
-        return cached;
-      }
-    } catch {
-      // Ignore DOM access error
-    }
-
-    // 2. Request via CustomEvent / window.postMessage with short timeout
+    // 1. Request live extraction via CustomEvent / window.postMessage first
+    // This queries the current Monaco Editor text model live to ensure new solutions replace old ones
     if (typeof CustomEvent === 'function' && typeof documentObj.dispatchEvent === 'function') {
       try {
         const requestId = `extract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -249,6 +236,20 @@ export class SolutionExtractor {
           `[SolutionExtractor] Monaco bridge request exception: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+    }
+
+    // 2. Fallback: Check DOM cache element if live event bridge timed out or is unavailable
+    try {
+      const cacheEl = documentObj.getElementById('__leetarchive_monaco_cache__');
+      if (cacheEl && cacheEl.textContent && cacheEl.textContent.trim()) {
+        const cached = cacheEl.textContent;
+        logger.info(
+          `[SolutionExtractor] Found cached Monaco code in DOM bridge element fallback (length: ${cached.length})`,
+        );
+        return cached;
+      }
+    } catch {
+      // Ignore DOM access error
     }
 
     return null;

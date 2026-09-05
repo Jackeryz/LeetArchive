@@ -4,15 +4,19 @@ import { LeetCodeParser } from './parser';
 
 /**
  * Monitors DOM mutations on LeetCode problem pages to trigger auto-sync on Accepted submissions.
- * Handles SPA navigation transitions using standard browser events and prevents duplicate event emissions per submission.
+ * Handles SPA navigation transitions using standard browser events and prevents duplicate event emissions per submission,
+ * while ensuring new submissions for the same problem are recognized and processed.
  */
 export class LeetCodeObserver {
   private observer: MutationObserver | null = null;
   private onAcceptedCallback: ((payload: SubmissionDetectedPayload) => void) | null = null;
   private hasEmittedForCurrentSubmission: boolean = false;
+  private lastEmittedSubmissionId: string | null = null;
   private currentUrl: string = '';
   private isObserving: boolean = false;
   private popstateHandler: (() => void) | null = null;
+  private clickHandler: ((e: MouseEvent) => void) | null = null;
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
   /**
    * Starts observing the DOM for accepted submission elements and sets up SPA navigation listeners.
@@ -28,8 +32,10 @@ export class LeetCodeObserver {
     this.onAcceptedCallback = onAccepted || null;
     this.currentUrl = typeof window !== 'undefined' ? window.location.href : '';
     this.hasEmittedForCurrentSubmission = false;
+    this.lastEmittedSubmissionId = null;
 
     this.setupSpaNavigationListeners();
+    this.setupSubmissionActionListeners();
 
     this.observer = new MutationObserver(() => {
       this.handleDomMutation();
@@ -74,6 +80,36 @@ export class LeetCodeObserver {
   }
 
   /**
+   * Listens for user submission actions (click on Submit buttons or Ctrl/Cmd+Enter shortcut)
+   * to proactively reset the submission lock for subsequent submissions on the same problem.
+   */
+  private setupSubmissionActionListeners(): void {
+    if (typeof window === 'undefined') return;
+
+    this.clickHandler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const submitBtn = target.closest(
+        '[data-e2e-locator="console-submit-button"], button[data-cy="submit-code-btn"], button',
+      );
+      if (submitBtn && submitBtn.textContent && submitBtn.textContent.includes('Submit')) {
+        logger.debug('User clicked Submit button. Resetting submission detection lock.');
+        this.resetSubmissionLock();
+      }
+    };
+
+    this.keydownHandler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        logger.debug('User pressed submit shortcut (Ctrl/Cmd+Enter). Resetting submission lock.');
+        this.resetSubmissionLock();
+      }
+    };
+
+    window.addEventListener('click', this.clickHandler, true);
+    window.addEventListener('keydown', this.keydownHandler, true);
+  }
+
+  /**
    * Handles SPA URL change events, resetting emission locks for new pages.
    */
   private handleUrlChange(newUrl: string): void {
@@ -82,6 +118,7 @@ export class LeetCodeObserver {
     logger.debug(`SPA navigation detected: ${this.currentUrl} -> ${newUrl}`);
     this.currentUrl = newUrl;
     this.resetSubmissionLock();
+    this.lastEmittedSubmissionId = null;
 
     // Check if new page has an accepted result node
     this.checkSubmissionResult();
@@ -112,8 +149,12 @@ export class LeetCodeObserver {
       return;
     }
 
-    // Deduplication check: per accepted submission lock
-    if (this.hasEmittedForCurrentSubmission) {
+    // Deduplication check: Allow if lock is reset OR if a new submissionId is present
+    const isNewSubmissionId =
+      Boolean(acceptedInfo.submissionId) &&
+      acceptedInfo.submissionId !== this.lastEmittedSubmissionId;
+
+    if (this.hasEmittedForCurrentSubmission && !isNewSubmissionId) {
       return;
     }
 
@@ -124,8 +165,9 @@ export class LeetCodeObserver {
     }
 
     this.hasEmittedForCurrentSubmission = true;
+    this.lastEmittedSubmissionId = acceptedInfo.submissionId || null;
     logger.debug(
-      `Emitting SubmissionDetected event for problem '${payload.problemSlug}' (${payload.language})`,
+      `Emitting SubmissionDetected event for problem '${payload.problemSlug}' (${payload.language}, submissionId=${payload.submissionId || 'unknown'})`,
     );
 
     // Publish event via EventBus
@@ -154,13 +196,24 @@ export class LeetCodeObserver {
       this.observer = null;
     }
 
-    if (typeof window !== 'undefined' && this.popstateHandler) {
-      window.removeEventListener('popstate', this.popstateHandler);
-      window.removeEventListener('hashchange', this.popstateHandler);
-      this.popstateHandler = null;
+    if (typeof window !== 'undefined') {
+      if (this.popstateHandler) {
+        window.removeEventListener('popstate', this.popstateHandler);
+        window.removeEventListener('hashchange', this.popstateHandler);
+        this.popstateHandler = null;
+      }
+      if (this.clickHandler) {
+        window.removeEventListener('click', this.clickHandler, true);
+        this.clickHandler = null;
+      }
+      if (this.keydownHandler) {
+        window.removeEventListener('keydown', this.keydownHandler, true);
+        this.keydownHandler = null;
+      }
     }
 
     this.hasEmittedForCurrentSubmission = false;
+    this.lastEmittedSubmissionId = null;
     this.onAcceptedCallback = null;
     this.isObserving = false;
     logger.debug('Stopped LeetCode submission observer and cleaned up resources.');
