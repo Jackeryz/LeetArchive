@@ -28,6 +28,17 @@
         "src/content/content-script.ts"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://leetcode.com/problems/*",
+        "https://leetcode.cn/problems/*"
+      ],
+      "js": [
+        "src/content/page-bridge.ts"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "action": {

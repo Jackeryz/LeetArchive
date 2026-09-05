@@ -7,9 +7,70 @@ if (typeof globalThis.window === 'undefined') {
   globalThis.window = {} as unknown as Window & typeof globalThis;
 }
 
-function createMockDocument(elementsList: any[] = []) {
+interface MockElement {
+  tagName?: string;
+  className?: string;
+  id?: string;
+  textContent?: string | null;
+  value?: string;
+  attributes?: Record<string, string>;
+  classList?: { contains: (c: string) => boolean };
+  children?: MockElement[];
+  offsetHeight?: number;
+  clientHeight?: number;
+  scrollHeight?: number;
+  style?: Record<string, string>;
+  cloneNode?: (deep?: boolean) => MockElement;
+  querySelectorAll?: (selector: string) => MockElement[];
+  querySelector?: (selector: string) => MockElement | null;
+}
+
+function createMockDocument(
+  elementsList: MockElement[] = [],
+  domCacheText: string | null = null,
+  isVirtualized: boolean = false,
+) {
+  const listeners: Record<string, Array<(e: Event) => void>> = {};
+
   return {
+    getElementById: (id: string) => {
+      if (id === '__leetarchive_monaco_cache__' && domCacheText !== null) {
+        return {
+          id: '__leetarchive_monaco_cache__',
+          textContent: domCacheText,
+        };
+      }
+      return null;
+    },
+    querySelector: (selector: string) => {
+      if (selector.includes('.monaco-editor')) {
+        return {
+          className: 'monaco-editor',
+          querySelector: (subSelector: string) => {
+            if (isVirtualized && subSelector.includes('.scrollbar.vertical')) {
+              return {
+                className: 'scrollbar vertical visible',
+                classList: { contains: (c: string) => c === 'visible' },
+                querySelector: () => ({ offsetHeight: 20 }),
+                offsetHeight: 200,
+              };
+            }
+            return null;
+          },
+        };
+      }
+      return null;
+    },
     querySelectorAll: (selector: string) => {
+      if (isVirtualized && selector.includes('.line-numbers')) {
+        // Virtualized editor scrolled down to line 25
+        return [
+          { textContent: '25' },
+          { textContent: '26' },
+          { textContent: '27' },
+        ];
+      }
+
       const matches: any[] = [];
       for (const el of elementsList) {
         const tag = (el.tagName || '').toLowerCase();
@@ -28,6 +89,22 @@ function createMockDocument(elementsList: any[] = []) {
         }
       }
       return matches;
+    },
+    addEventListener: (type: string, handler: (e: Event) => void) => {
+      if (!listeners[type]) listeners[type] = [];
+      listeners[type].push(handler);
+    },
+    removeEventListener: (type: string, handler: (e: Event) => void) => {
+      if (listeners[type]) {
+        listeners[type] = listeners[type].filter((h) => h !== handler);
+      }
+    },
+    dispatchEvent: (event: Event) => {
+      const handlers = listeners[event.type] || [];
+      for (const h of handlers) {
+        h(event);
+      }
+      return true;
     },
   } as unknown as Document;
 }
@@ -70,7 +147,7 @@ describe('Code Normalization (normalizeCode)', () => {
   });
 });
 
-describe('SolutionExtractor', () => {
+describe('SolutionExtractor \u2014 Complete Extraction & Virtualization Safeguards', () => {
   let extractor: SolutionExtractor;
   let eventBus: EventBus;
 
@@ -87,26 +164,164 @@ describe('SolutionExtractor', () => {
     vi.restoreAllMocks();
   });
 
-  it('extracts code via Strategy 1 (Monaco Global API) and normalizes CRLF and non-breaking spaces', () => {
-    const rawCode =
-      'class Solution:\r\n\u00A0\u00A0\u00A0\u00A0def twoSum(self, nums, target):\r\n\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0return []\r\n\r\n';
-    const expectedCode =
-      'class Solution:\n    def twoSum(self, nums, target):\n        return []\n';
+  // Requirement 1: A short solution is extracted completely
+  it('Requirement 1: extracts a short solution completely via Monaco API', async () => {
+    const shortCode = 'def twoSum(nums, target):\n    return [0, 1]\n';
+    (globalThis.window as any).monaco = {
+      editor: {
+        getModels: () => [{ getValue: () => shortCode, getLanguageId: () => 'python' }],
+      },
+    };
+
+    const code = await extractor.extractSolutionCode();
+    expect(code).toBe(shortCode);
+  });
+
+  // Requirement 2: A long multi-line solution is extracted completely
+  it('Requirement 2: extracts a long multi-line solution completely without truncation', async () => {
+    const lines = ['class Solution:'];
+    for (let i = 1; i <= 150; i++) {
+      lines.push(`    def helperStep${i}(self, value: int) -> int:`);
+      lines.push(`        # Step ${i} calculation`);
+      lines.push(`        return value + ${i}`);
+    }
+    lines.push('    def solve(self):');
+    lines.push('        return self.helperStep150(42)');
+
+    const fullLongSolution = lines.join('\n');
+    expect(lines.length).toBeGreaterThan(450);
+
     (globalThis.window as any).monaco = {
       editor: {
         getModels: () => [
           {
-            getValue: () => rawCode,
+            getValue: () => fullLongSolution,
+            getLanguageId: () => 'python',
           },
         ],
       },
     };
 
-    const code = extractor.extractSolutionCode();
-    expect(code).toBe(expectedCode);
+    const extracted = await extractor.extractSolutionCode();
+    expect(extracted).not.toBeNull();
+    expect(extracted).toBe(`${fullLongSolution}\n`);
+    expect(extracted?.split('\n').length).toBe(lines.length + 1);
+    expect(extracted).toContain('def helperStep150');
+    expect(extracted).toContain('return self.helperStep150(42)');
   });
 
-  it('extracts code via Strategy 2 (Monaco Editor DOM Lines)', () => {
+  // Requirement 3: A virtualized/partial .view-line DOM does NOT get treated as the complete source
+  it('Requirement 3: strictly rejects virtualized/partial .view-line DOM from being treated as complete source', async () => {
+    // Simulate Monaco editor where editor is virtualized (scrolled, visible lines 25-27)
+    const partialVisibleLines: MockElement[] = [
+      {
+        tagName: 'DIV',
+        className: 'view-line',
+        textContent: '        # line 25 visible slice',
+        cloneNode: function () {
+          return { textContent: this.textContent, querySelectorAll: () => [] };
+        },
+      },
+      {
+        tagName: 'DIV',
+        className: 'view-line',
+        textContent: '        return result[0]',
+        cloneNode: function () {
+          return { textContent: this.textContent, querySelectorAll: () => [] };
+        },
+      },
+    ];
+
+    // createMockDocument with isVirtualized = true (scrollbar visible, line-numbers start at 25)
+    const mockDoc = createMockDocument(partialVisibleLines, null, true);
+
+    // Verify isMonacoVirtualized returns true
+    expect(extractor.isMonacoVirtualized(mockDoc)).toBe(true);
+
+    // extractFromMonacoLines must return null when virtualized
+    const linesResult = extractor.extractFromMonacoLines(mockDoc);
+    expect(linesResult).toBeNull();
+
+    // extractSolutionCode must NOT return the 2 partial lines
+    const code = await extractor.extractSolutionCode(mockDoc);
+    expect(code).toBeNull();
+  });
+
+  // Requirement 4: Monaco model extraction returns the complete source via bridge cache
+  it('Requirement 4: extracts complete source via page-world bridge DOM cache', async () => {
+    const completeSource = [
+      '# Complete Solution',
+      'class Solution {',
+      '    public int lengthOfLongestSubstring(String s) {',
+      '        int n = s.length();',
+      '        int ans = 0;',
+      '        int[] index = new int[128];',
+      '        for (int j = 0, i = 0; j < n; j++) {',
+      '            i = Math.max(index[s.charAt(j)], i);',
+      '            ans = Math.max(ans, j - i + 1);',
+      '            index[s.charAt(j)] = j + 1;',
+      '        }',
+      '        return ans;',
+      '    }',
+      '}',
+    ].join('\n');
+
+    // Simulate page bridge caching complete code in __leetarchive_monaco_cache__
+    const mockDoc = createMockDocument([], completeSource, false);
+
+    const extracted = await extractor.extractSolutionCode(mockDoc);
+    expect(extracted).toBe(`${completeSource}\n`);
+    expect(extracted).toContain('public int lengthOfLongestSubstring');
+    expect(extracted).toContain('return ans;');
+  });
+
+  // Requirement 5: The final SolutionExtractedPayload.code exactly matches the complete source after normalization
+  it('Requirement 5: SolutionExtractedPayload.code exactly matches complete source after normalization', async () => {
+    let capturedPayload: SolutionExtractedPayload | null = null;
+    eventBus.subscribe<SolutionExtractedPayload>('SolutionExtracted', (event) => {
+      capturedPayload = event.payload;
+    });
+
+    const rawSolutionWithCrlfAndSpaces =
+      'class Solution:\r\n\u00A0\u00A0\u00A0\u00A0def twoSum(self, nums: List[int], target: int) -> List[int]:\r\n\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0return [0, 1]\r\n\r\n';
+
+    const expectedNormalized =
+      'class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        return [0, 1]\n';
+
+    (globalThis.window as any).monaco = {
+      editor: {
+        getModels: () => [
+          {
+            getValue: () => rawSolutionWithCrlfAndSpaces,
+            getLanguageId: () => 'python',
+          },
+        ],
+      },
+    };
+
+    extractor.start();
+
+    const submissionPayload: SubmissionDetectedPayload = {
+      problemTitle: 'Two Sum',
+      problemSlug: 'two-sum',
+      difficulty: 'Easy',
+      language: 'python3',
+      timestamp: 1700000000000,
+      submissionId: '99999',
+    };
+
+    await extractor.handleSubmissionDetected(submissionPayload);
+
+    expect(capturedPayload).not.toBeNull();
+    const result = capturedPayload as unknown as SolutionExtractedPayload;
+    expect(result.code).toBe(expectedNormalized);
+    expect(result.problemTitle).toBe('Two Sum');
+    expect(result.problemSlug).toBe('two-sum');
+    expect(result.difficulty).toBe('Easy');
+    expect(result.language).toBe('python3');
+  });
+
+  it('extracts non-virtualized small snippet via Strategy 2 (.view-line) when editor has no scrollbar', async () => {
     const mockLines = [
       {
         tagName: 'DIV',
@@ -134,12 +349,13 @@ describe('SolutionExtractor', () => {
       },
     ];
 
-    const mockDoc = createMockDocument(mockLines);
-    const code = extractor.extractSolutionCode(mockDoc);
+    // Non-virtualized doc (isVirtualized = false)
+    const mockDoc = createMockDocument(mockLines, null, false);
+    const code = await extractor.extractSolutionCode(mockDoc);
     expect(code).toBe('function twoSum(nums, target) {\n    return [0, 1];\n}\n');
   });
 
-  it('extracts code via Strategy 3 (Textarea Input Fallback)', () => {
+  it('extracts code via Strategy 3 (Textarea Input Fallback)', async () => {
     const mockTextarea = {
       tagName: 'TEXTAREA',
       className: 'inputarea',
@@ -147,11 +363,11 @@ describe('SolutionExtractor', () => {
     };
 
     const mockDoc = createMockDocument([mockTextarea]);
-    const code = extractor.extractSolutionCode(mockDoc);
+    const code = await extractor.extractSolutionCode(mockDoc);
     expect(code).toBe('public class Solution { public int[] twoSum() {} }\n');
   });
 
-  it('extracts code via Strategy 4 (Semantic Code / Pre Elements)', () => {
+  it('extracts code via Strategy 4 (Semantic Code / Pre Elements)', async () => {
     const mockCodeEl = {
       tagName: 'PRE',
       className: '',
@@ -159,7 +375,7 @@ describe('SolutionExtractor', () => {
     };
 
     const mockDoc = createMockDocument([mockCodeEl]);
-    const code = extractor.extractSolutionCode(mockDoc);
+    const code = await extractor.extractSolutionCode(mockDoc);
     expect(code).toBe('fn main() { println!("Hello LeetCode"); }\n');
   });
 
@@ -170,50 +386,7 @@ describe('SolutionExtractor', () => {
     expect(extractor.validateCode('valid code block')).toBe(true);
   });
 
-  it('handles failed extraction gracefully when all strategies return invalid code', () => {
-    const mockEmptyTextarea = {
-      tagName: 'TEXTAREA',
-      className: 'inputarea',
-      value: '   ',
-    };
-
-    const mockDoc = createMockDocument([mockEmptyTextarea]);
-    const code = extractor.extractSolutionCode(mockDoc);
-    expect(code).toBeNull();
-  });
-
-  it('subscribes to SubmissionDetected and publishes SolutionExtracted event with accurate payload', () => {
-    let emittedSolutionPayload: SolutionExtractedPayload | null = null;
-    eventBus.subscribe<SolutionExtractedPayload>('SolutionExtracted', (event) => {
-      emittedSolutionPayload = event.payload;
-    });
-
-    vi.spyOn(extractor, 'extractSolutionCode').mockReturnValue(
-      'class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        pass',
-    );
-
-    const submissionPayload: SubmissionDetectedPayload = {
-      problemTitle: 'Two Sum',
-      problemSlug: 'two-sum',
-      difficulty: 'Easy',
-      language: 'python3',
-      timestamp: 1700000000000,
-      submissionId: '10001',
-    };
-
-    extractor.start();
-    eventBus.publish('SubmissionDetected', submissionPayload);
-
-    expect(emittedSolutionPayload).not.toBeNull();
-    const result = emittedSolutionPayload as unknown as SolutionExtractedPayload;
-    expect(result.problemTitle).toBe('Two Sum');
-    expect(result.problemSlug).toBe('two-sum');
-    expect(result.difficulty).toBe('Easy');
-    expect(result.language).toBe('python3');
-    expect(result.code).toContain('def twoSum');
-  });
-
-  it('handles multiple Accepted submissions across different languages', () => {
+  it('handles multiple Accepted submissions across different languages', async () => {
     const emittedEvents: SolutionExtractedPayload[] = [];
     eventBus.subscribe<SolutionExtractedPayload>('SolutionExtracted', (event) => {
       emittedEvents.push(event.payload);
@@ -221,14 +394,14 @@ describe('SolutionExtractor', () => {
 
     extractor.start();
 
-    const submissions: Array<{ slug: string; lang: string; code: string }> = [
+    const submissions = [
       { slug: 'two-sum', lang: 'python3', code: 'def twoSum(): pass' },
       { slug: 'add-two-numbers', lang: 'cpp', code: 'int main() { return 0; }' },
       { slug: '3sum', lang: 'java', code: 'class Solution {}' },
     ];
 
     for (const sub of submissions) {
-      vi.spyOn(extractor, 'extractSolutionCode').mockReturnValueOnce(sub.code);
+      vi.spyOn(extractor, 'extractSolutionCode').mockResolvedValueOnce(sub.code);
 
       eventBus.publish('SubmissionDetected', {
         problemTitle: sub.slug,
@@ -238,6 +411,9 @@ describe('SolutionExtractor', () => {
         timestamp: Date.now(),
       });
     }
+
+    // Wait microtask tick for async handlers
+    await new Promise((r) => setTimeout(r, 10));
 
     expect(emittedEvents.length).toBe(3);
     expect(emittedEvents[0].language).toBe('python3');

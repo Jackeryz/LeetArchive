@@ -2,10 +2,11 @@ import { EventBus, SolutionExtractedPayload, SubmissionDetectedPayload } from '.
 import { logger } from '../utils/logger';
 
 /**
- * Normalizes extracted solution code whitespace and line endings before validation and emission:
- * - Replaces Unicode non-breaking spaces (\u00A0) with standard ASCII spaces.
- * - Converts CRLF (\r\n) or isolated \r line endings to Unix LF (\n).
- * - Removes trailing blank lines and whitespace (trimEnd()), ensuring a single trailing newline at file end.
+ * Normalizes raw extracted solution code:
+ * - Replaces non-breaking spaces (\u00A0) with standard ASCII spaces.
+ * - Converts CRLF and CR to Unix LF (\n).
+ * - Strips trailing whitespace and trailing blank lines.
+ * - Ensures exactly one trailing newline.
  * - Preserves leading indentation and internal blank lines.
  */
 export function normalizeCode(rawCode: string | null): string | null {
@@ -15,6 +16,7 @@ export function normalizeCode(rawCode: string | null): string | null {
   let normalized = rawCode.replace(/\u00A0/g, ' ');
 
   // 2. Convert Windows CRLF (\r\n) and legacy Mac \r line endings to Unix \n
+
   normalized = normalized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   // 3. Remove trailing blank lines and whitespace
@@ -28,7 +30,11 @@ export function normalizeCode(rawCode: string | null): string | null {
 
 /**
  * Service responsible solely for extracting solution source code from LeetCode problem pages
- * using a layered extraction pipeline (Monaco API -> Monaco DOM lines -> Textarea -> Semantic Code).
+ * using a layered extraction pipeline:
+ * 1. Monaco Model Extraction (Page-world bridge & Monaco global API)
+ * 2. Monaco Editor DOM Lines (non-virtualized only)
+ * 3. Textarea / Input Elements
+ * 4. Semantic Code Elements (code, pre)
  */
 export class SolutionExtractor {
   private unsubscribe: (() => void) | null = null;
@@ -49,7 +55,7 @@ export class SolutionExtractor {
     this.unsubscribe = EventBus.getInstance().subscribe<SubmissionDetectedPayload>(
       'SubmissionDetected',
       (event) => {
-        this.handleSubmissionDetected(event.payload);
+        void this.handleSubmissionDetected(event.payload);
       },
     );
   }
@@ -57,18 +63,25 @@ export class SolutionExtractor {
   /**
    * Handles incoming SubmissionDetected events and publishes SolutionExtracted upon successful code retrieval.
    */
-  public handleSubmissionDetected(payload: SubmissionDetectedPayload, doc?: Document): void {
+  public async handleSubmissionDetected(
+    payload: SubmissionDetectedPayload,
+    doc?: Document,
+  ): Promise<void> {
     logger.debug(
       `[SolutionExtractor] Received SubmissionDetected event for problem '${payload.problemSlug}'`,
     );
 
-    const code = this.extractSolutionCode(doc);
+    const code = await this.extractSolutionCode(doc);
     if (!code) {
       logger.warn(
         `[SolutionExtractor] Failed to extract valid solution code for problem '${payload.problemSlug}'`,
       );
       return;
     }
+    const finalLines = code.split('\n').length;
+    logger.info(
+      `[SolutionExtractor] Final extracted code for '${payload.problemSlug}': length=${code.length}, lines=${finalLines}`,
+    );
 
     const solutionPayload: SolutionExtractedPayload = {
       problemTitle: payload.problemTitle,
@@ -86,57 +99,182 @@ export class SolutionExtractor {
   }
 
   /**
-   * Attempts to extract solution code using a 4-stage layered strategy.
+   * Attempts to extract complete solution code using a layered strategy.
    */
-  public extractSolutionCode(doc?: Document): string | null {
-    // Strategy 1: Monaco Editor Global API
-    logger.debug('[SolutionExtractor] Attempting Strategy 1: Monaco Global API');
-    const monacoCode = normalizeCode(this.extractFromMonacoApi());
+  public async extractSolutionCode(doc?: Document): Promise<string | null> {
+    // Strategy 1a: Monaco Page-World Bridge (MAIN world communication)
+    logger.info('[SolutionExtractor] Attempting Strategy 1a: Monaco Page Bridge');
+    const rawBridgeCode = await this.extractFromMonacoBridge(doc);
+    const bridgeCode = normalizeCode(rawBridgeCode);
+    if (this.validateCode(bridgeCode)) {
+      const lineCount = bridgeCode ? bridgeCode.split('\n').length : 0;
+      logger.info(
+        `[SolutionExtractor] Strategy 1a (Monaco Page Bridge) SUCCEEDED: rawLength=${rawBridgeCode?.length || 0}, normalizedLength=${bridgeCode?.length || 0}, lines=${lineCount}`,
+      );
+      return bridgeCode;
+    }
+
+    // Strategy 1b: Monaco Global API (same realm / unit test mocks)
+    logger.info('[SolutionExtractor] Attempting Strategy 1b: Monaco Global API');
+    const rawMonacoCode = this.extractFromMonacoApi();
+    const monacoCode = normalizeCode(rawMonacoCode);
     if (this.validateCode(monacoCode)) {
-      logger.debug('[SolutionExtractor] Strategy 1 (Monaco Global API) succeeded.');
+      const lineCount = monacoCode ? monacoCode.split('\n').length : 0;
+      logger.info(
+        `[SolutionExtractor] Strategy 1b (Monaco Global API) SUCCEEDED: rawLength=${rawMonacoCode?.length || 0}, normalizedLength=${monacoCode?.length || 0}, lines=${lineCount}`,
+      );
       return monacoCode;
     }
 
-    // Strategy 2: Monaco Editor DOM Lines (.view-line)
-    logger.debug('[SolutionExtractor] Attempting Strategy 2: Monaco Editor DOM Lines');
-    const domLinesCode = normalizeCode(this.extractFromMonacoLines(doc));
+    // Strategy 2: Monaco Editor DOM Lines (.view-line) - strictly rejected if virtualized
+    logger.info('[SolutionExtractor] Attempting Strategy 2: Monaco Editor DOM Lines');
+    const rawDomLinesCode = this.extractFromMonacoLines(doc);
+    const domLinesCode = normalizeCode(rawDomLinesCode);
     if (this.validateCode(domLinesCode)) {
-      logger.debug('[SolutionExtractor] Strategy 2 (Monaco Editor DOM Lines) succeeded.');
+      const lineCount = domLinesCode ? domLinesCode.split('\n').length : 0;
+      logger.info(
+        `[SolutionExtractor] Strategy 2 (Monaco Editor DOM Lines) SUCCEEDED: rawLength=${rawDomLinesCode?.length || 0}, normalizedLength=${domLinesCode?.length || 0}, lines=${lineCount}`,
+      );
       return domLinesCode;
     }
 
     // Strategy 3: Textarea / Input Elements
-    logger.debug('[SolutionExtractor] Attempting Strategy 3: Textarea Input');
-    const textareaCode = normalizeCode(this.extractFromTextarea(doc));
+    logger.info('[SolutionExtractor] Attempting Strategy 3: Textarea Input');
+    const rawTextareaCode = this.extractFromTextarea(doc);
+    const textareaCode = normalizeCode(rawTextareaCode);
     if (this.validateCode(textareaCode)) {
-      logger.debug('[SolutionExtractor] Strategy 3 (Textarea Input) succeeded.');
+      const lineCount = textareaCode ? textareaCode.split('\n').length : 0;
+      logger.info(
+        `[SolutionExtractor] Strategy 3 (Textarea Input) SUCCEEDED: rawLength=${rawTextareaCode?.length || 0}, normalizedLength=${textareaCode?.length || 0}, lines=${lineCount}`,
+      );
       return textareaCode;
     }
 
     // Strategy 4: Semantic Code Elements (code, pre)
-    logger.debug('[SolutionExtractor] Attempting Strategy 4: Semantic Code Elements');
-    const semanticCode = normalizeCode(this.extractFromSemanticCode(doc));
+    logger.info('[SolutionExtractor] Attempting Strategy 4: Semantic Code Elements');
+    const rawSemanticCode = this.extractFromSemanticCode(doc);
+    const semanticCode = normalizeCode(rawSemanticCode);
     if (this.validateCode(semanticCode)) {
-      logger.debug('[SolutionExtractor] Strategy 4 (Semantic Code Elements) succeeded.');
+      const lineCount = semanticCode ? semanticCode.split('\n').length : 0;
+      logger.info(
+        `[SolutionExtractor] Strategy 4 (Semantic Code Elements) SUCCEEDED: rawLength=${rawSemanticCode?.length || 0}, normalizedLength=${semanticCode?.length || 0}, lines=${lineCount}`,
+      );
       return semanticCode;
     }
 
-    logger.debug('[SolutionExtractor] All extraction strategies failed to produce valid code.');
+    logger.warn('[SolutionExtractor] All extraction strategies failed to produce valid code.');
     return null;
   }
 
   /**
-   * Strategy 1: Extracts code directly from Monaco Editor global instance models.
+   * Strategy 1a: Communicates with page-world bridge running in "world": "MAIN"
+   * to retrieve the complete Monaco editor text model without virtualization losses.
    */
-  private extractFromMonacoApi(): string | null {
+  public async extractFromMonacoBridge(doc?: Document): Promise<string | null> {
+    const documentObj = doc || (typeof document !== 'undefined' ? document : null);
+    if (!documentObj) return null;
+
+    // 1. Check synchronous DOM cache element populated by page bridge
+    try {
+      const cacheEl = documentObj.getElementById('__leetarchive_monaco_cache__');
+      if (cacheEl && cacheEl.textContent && cacheEl.textContent.trim()) {
+        const cached = cacheEl.textContent;
+        logger.info(
+          `[SolutionExtractor] Found cached Monaco code in DOM bridge element (length: ${cached.length})`,
+        );
+        return cached;
+      }
+    } catch {
+      // Ignore DOM access error
+    }
+
+    // 2. Request via CustomEvent / window.postMessage with short timeout
+    if (typeof CustomEvent === 'function' && typeof documentObj.dispatchEvent === 'function') {
+      try {
+        const requestId = `extract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        const codePromise = new Promise<string | null>((resolve) => {
+          const timer = setTimeout(() => {
+            cleanup();
+            resolve(null);
+          }, 350);
+
+          const eventListener = (e: Event) => {
+            const ce = e as CustomEvent<{
+              requestId?: string;
+              success?: boolean;
+              code?: string | null;
+            }>;
+            if (ce.detail && ce.detail.requestId === requestId) {
+              cleanup();
+              resolve(ce.detail.code || null);
+            }
+          };
+
+          const messageListener = (event: MessageEvent) => {
+            if (
+              event.data &&
+              event.data.type === 'LEETARCHIVE_MONACO_RESPONSE' &&
+              event.data.requestId === requestId
+            ) {
+              cleanup();
+              resolve(event.data.code || null);
+            }
+          };
+
+          const cleanup = () => {
+            clearTimeout(timer);
+            documentObj.removeEventListener('LEETARCHIVE_MONACO_RESPONSE', eventListener);
+            if (typeof window !== 'undefined') {
+              window.removeEventListener('message', messageListener);
+            }
+          };
+
+          documentObj.addEventListener('LEETARCHIVE_MONACO_RESPONSE', eventListener);
+          if (typeof window !== 'undefined') {
+            window.addEventListener('message', messageListener);
+          }
+
+          documentObj.dispatchEvent(
+            new CustomEvent('LEETARCHIVE_MONACO_REQUEST', {
+              detail: { requestId },
+            }),
+          );
+        });
+
+        const code = await codePromise;
+        if (code) return code;
+      } catch (err: unknown) {
+        logger.debug(
+          `[SolutionExtractor] Monaco bridge request exception: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Strategy 1b: Extracts code directly from Monaco Editor global instance models in the same realm.
+   */
+  public extractFromMonacoApi(): string | null {
     if (typeof window === 'undefined') return null;
 
     try {
       const monacoGlobal = (
         window as unknown as {
-          monaco?: { editor?: { getModels: () => Array<{ getValue: () => string }> } };
+          monaco?: {
+            editor?: {
+              getModels: () => Array<{
+                getValue: () => string;
+                getLanguageId?: () => string;
+                uri?: { toString: () => string };
+              }>;
+            };
+          };
         }
       ).monaco;
+
       if (
         monacoGlobal &&
         monacoGlobal.editor &&
@@ -144,7 +282,16 @@ export class SolutionExtractor {
       ) {
         const models = monacoGlobal.editor.getModels();
         if (models && models.length > 0) {
-          const value = models[0].getValue();
+          // Select model
+          let selected = models[0];
+          const codeModels = models.filter((m) => {
+            const lang = typeof m.getLanguageId === 'function' ? m.getLanguageId() : '';
+            return lang && lang !== 'plaintext' && lang !== 'markdown' && lang !== 'json';
+          });
+          if (codeModels.length > 0) {
+            selected = codeModels[0];
+          }
+          const value = selected.getValue();
           return value || null;
         }
       }
@@ -157,9 +304,11 @@ export class SolutionExtractor {
   }
 
   /**
-   * Strategy 2: Extracts code by querying Monaco editor .view-line DOM nodes.
+   * Strategy 2: Extracts code from Monaco editor .view-line DOM nodes.
+   * If the editor is virtualized (scrolled or partial DOM), this strategy strictly returns null
+   * to protect data integrity and prevent partial solution archiving.
    */
-  private extractFromMonacoLines(doc?: Document): string | null {
+  public extractFromMonacoLines(doc?: Document): string | null {
     const documentObj = doc || (typeof document !== 'undefined' ? document : null);
     if (!documentObj) return null;
 
@@ -167,6 +316,14 @@ export class SolutionExtractor {
       '.monaco-editor .view-line, [role="code"] .view-line, .view-line',
     );
     if (!lineElements || lineElements.length === 0) return null;
+
+    // Safety check: Detect if editor DOM is virtualized
+    if (this.isMonacoVirtualized(documentObj)) {
+      logger.warn(
+        `[SolutionExtractor] Monaco editor DOM is virtualized (${lineElements.length} rendered lines). Rejecting partial DOM extraction to ensure complete source archive.`,
+      );
+      return null;
+    }
 
     const lines: string[] = [];
     for (const el of Array.from(lineElements)) {
@@ -185,9 +342,59 @@ export class SolutionExtractor {
   }
 
   /**
+   * Detects whether Monaco Editor's rendered .view-line elements represent only a partial
+   * virtualized viewport slice instead of the full document.
+   */
+  public isMonacoVirtualized(documentObj: Document): boolean {
+    try {
+      // 1. Check line numbers: If the first line number rendered is not '1', editor is scrolled
+      const lineNumbers = documentObj.querySelectorAll(
+        '.monaco-editor .line-numbers, .monaco-editor .margin-view-overlays .line-numbers',
+      );
+      if (lineNumbers.length > 0) {
+        const firstNumText = lineNumbers[0].textContent?.trim();
+        if (firstNumText && firstNumText !== '1' && !isNaN(Number(firstNumText))) {
+          return true;
+        }
+      }
+
+      // 2. Check for active/visible vertical scrollbar or partial slider
+      const verticalScrollbar = documentObj.querySelector(
+        '.monaco-editor .scrollbar.vertical, .monaco-editor .visible.scrollbar.vertical',
+      );
+      if (verticalScrollbar) {
+        if (verticalScrollbar.classList.contains('visible')) {
+          return true;
+        }
+        const slider = verticalScrollbar.querySelector('.slider') as HTMLElement | null;
+        const bar = verticalScrollbar as HTMLElement;
+        if (slider && bar) {
+          const sliderH = slider.offsetHeight || parseInt(slider.style.height || '0', 10);
+          const barH = bar.offsetHeight || parseInt(bar.style.height || '0', 10);
+          if (barH > 0 && sliderH > 0 && sliderH < barH - 5) {
+            return true;
+          }
+        }
+      }
+
+      // 3. Check scrollHeight vs clientHeight of scrollable container
+      const scrollable = documentObj.querySelector(
+        '.monaco-editor .monaco-scrollable-element',
+      ) as HTMLElement | null;
+      if (scrollable && scrollable.scrollHeight > scrollable.clientHeight + 20) {
+        return true;
+      }
+    } catch {
+      // If error occurs while inspecting virtualization, proceed with caution
+    }
+
+    return false;
+  }
+
+  /**
    * Strategy 3: Extracts code from textarea or textbox elements.
    */
-  private extractFromTextarea(doc?: Document): string | null {
+  public extractFromTextarea(doc?: Document): string | null {
     const documentObj = doc || (typeof document !== 'undefined' ? document : null);
     if (!documentObj) return null;
 
@@ -208,7 +415,7 @@ export class SolutionExtractor {
   /**
    * Strategy 4: Extracts code from semantic code or pre elements.
    */
-  private extractFromSemanticCode(doc?: Document): string | null {
+  public extractFromSemanticCode(doc?: Document): string | null {
     const documentObj = doc || (typeof document !== 'undefined' ? document : null);
     if (!documentObj) return null;
 
