@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-v0.1.0-blue)
+![Version](https://img.shields.io/badge/version-v1.0.0-blue)
 ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
