@@ -24,7 +24,9 @@
         "https://leetcode.com/problems/*",
         "https://leetcode.cn/problems/*"
       ],
-      "js": ["src/content/content-script.ts"],
+      "js": [
+        "src/content/content-script.ts"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -33,6 +35,7 @@
     "default_title": "LeetArchive Status",
     "default_icon": {
       "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
       "48": "assets/icons/icon48.png",
       "128": "assets/icons/icon128.png"
     }
@@ -40,6 +43,7 @@
   "options_page": "src/options/options.html",
   "icons": {
     "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
     "48": "assets/icons/icon48.png",
     "128": "assets/icons/icon128.png"
   }
