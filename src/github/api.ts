@@ -6,6 +6,7 @@ export interface ApiResponse<T> {
   status: number;
   scopesHeader: string | null;
   errorMessage?: string;
+  errorDetails?: unknown;
 }
 
 /**
@@ -52,14 +53,17 @@ export class GitHubApiBase {
       const status = response.status;
 
       if (!response.ok) {
-        let errJson: { message?: string } | null = null;
+        let errJson: unknown = null;
         try {
-          errJson = (await response.json()) as { message?: string };
+          errJson = await response.json();
         } catch {
           // Response was not JSON
         }
 
-        const rawMessage = errJson?.message;
+        const rawMessage =
+          typeof errJson === 'object' && errJson !== null && 'message' in errJson
+            ? String((errJson as { message?: unknown }).message)
+            : undefined;
         let errorMessage: string;
 
         if (status === 401) {
@@ -90,6 +94,7 @@ export class GitHubApiBase {
           status,
           scopesHeader,
           errorMessage,
+          errorDetails: errJson,
         };
       }
 

@@ -12,22 +12,24 @@
         <div class="header-title">
           <span class="logo-icon">📦</span>
           <div>
-            <h1>LeetArchive Settings</h1>
+            <h1>LeetArchive</h1>
             <p class="subtitle">Secure, least-privilege GitHub solution archiver</p>
           </div>
         </div>
-        <div id="conn-status-badge" class="badge disconnected">Disconnected</div>
+        <div class="header-actions">
+          <div id="conn-status-badge" class="badge disconnected">Disconnected</div>
+        </div>
       </header>
 
       <!-- FIRST TIME SETUP WIZARD -->
       <section class="wizard-card">
         <div class="wizard-header">
-          <h2>🔑 First-Time Setup Guide (Fine-Grained PAT)</h2>
-          <span class="security-tag">Least-Privilege Security</span>
+          <h2>🔑 GitHub Fine-Grained Token Guide</h2>
+          <span class="security-tag">Least Privilege</span>
         </div>
         <p class="wizard-intro">
-          Follow these 10 step-by-step instructions to generate a GitHub Fine-Grained Personal
-          Access Token (PAT) for LeetArchive:
+          Follow these steps to generate a GitHub Fine-Grained Personal Access Token (PAT) for
+          LeetArchive:
         </p>
 
         <ol class="setup-steps">
@@ -49,62 +51,39 @@
             <code>LeetArchive</code>).
           </li>
           <li>
-            Under <strong>Repository access</strong>, select
+            Under <strong>Repository access</strong>, choose
             <strong>Only select repositories</strong>.
           </li>
-          <li>
-            Create a dedicated repository (recommended: <code>leetcode-solutions</code>) or select
-            an existing repository.
-          </li>
+          <li>Select your dedicated repository (e.g. <code>leetcode-solutions</code>).</li>
           <li>Grant access to <strong>only that repository</strong>.</li>
           <li>
-            Grant only the minimum required repository permissions:
+            Set minimum repository permissions:
             <ul>
               <li><strong>Contents</strong> → <code>Access: Read and write</code></li>
               <li><strong>Metadata</strong> → <code>Access: Read-only</code></li>
             </ul>
           </li>
           <li>
-            <strong>Recommended:</strong> Select <strong>No expiration</strong> so LeetArchive
-            continues to function without requiring periodic token replacement.
+            <strong>Recommended:</strong> Select <strong>No expiration</strong> (or set a custom
+            expiration date).
           </li>
-          <li>
-            If you prefer regular credential rotation or are subject to organizational security
-            policies, you may instead choose a custom expiration date and simply replace the token
-            in LeetArchive when it expires.
-          </li>
-          <li>Click <strong>Generate token</strong> at the bottom of the page.</li>
-          <li>
-            Copy the generated token (starts with <code>github_pat_...</code>) and paste it into
-            Section 1 below, then enter your Repository Owner and Repository Name in Section 2.
-          </li>
+          <li>Generate the token, copy it, and paste it into Section 1 below.</li>
         </ol>
 
-        <!-- WHY THESE RECOMMENDATIONS EXIST -->
+        <!-- SECURITY EXPLANATION -->
         <div class="rationale-box">
-          <h3>🛡️ Why These Recommendations Exist</h3>
+          <h3>🛡️ Why these permissions?</h3>
           <div class="rationale-grid">
             <div class="rationale-item">
-              <strong>Only one repository</strong>
+              <strong>Single Repository Access</strong>
               <p>
-                Strictly follows the principle of <em>least privilege</em> so LeetArchive cannot
-                modify or access any other repositories in your GitHub account.
+                Restricts LeetArchive to your chosen repository only, enforcing strict
+                least-privilege security.
               </p>
             </div>
             <div class="rationale-item">
-              <strong>Minimum permissions only</strong>
-              <p>
-                Restricts token capabilities to only writing solution files and reading repository
-                metadata, minimizing security risks.
-              </p>
-            </div>
-            <div class="rationale-item">
-              <strong>No expiration (recommended option)</strong>
-              <p>
-                Avoids unexpected workflow interruptions for personal archiving projects. Expiration
-                is never strictly forced—you remain free to choose a custom expiration date if
-                desired.
-              </p>
+              <strong>Contents Read & Write</strong>
+              <p>Allows LeetArchive to commit problem descriptions and code solution files.</p>
             </div>
           </div>
         </div>
@@ -114,9 +93,9 @@
       <main class="settings-form">
         <!-- SECTION 1: AUTHENTICATION -->
         <section class="section">
-          <h2>1. Authentication Token</h2>
+          <h2>1. GitHub Authentication</h2>
           <div class="field">
-            <label for="github-token">GitHub Fine-Grained Personal Access Token (PAT)</label>
+            <label for="github-token">Fine-Grained Personal Access Token (PAT)</label>
             <div class="token-input-group">
               <input
                 type="password"
@@ -134,71 +113,63 @@
               </button>
             </div>
             <span class="help-text"
-              >Your token is stored safely in local browser storage and is never exposed or
-              logged.</span
+              >Required permissions: Contents (Read & Write), Metadata (Read).</span
             >
-          </div>
-
-          <div class="button-row">
-            <button id="validate-token-btn" class="btn primary">Validate Configuration</button>
-            <button id="disconnect-btn" class="btn danger" style="display: none">
-              Disconnect & Clear Credentials
-            </button>
           </div>
         </section>
 
         <!-- SECTION 2: REPOSITORY SELECTION -->
         <section class="section">
-          <h2>2. Target Repository Configuration</h2>
-          <p class="section-desc">
-            Enter the full GitHub repository URL or <code>owner/repository</code> name for your
-            solution archives. The default branch will be detected automatically.
-          </p>
+          <h2>2. Target Repository</h2>
+          <p class="section-desc">Solutions will be archived to this exact repository.</p>
 
           <div class="field">
-            <label for="repo-url">GitHub Repository URL or owner/repository</label>
+            <label for="repo-url">GitHub Repository (owner/repository or URL)</label>
             <input
               type="text"
               id="repo-url"
-              placeholder="https://github.com/username/reponame"
+              placeholder="owner/leetcode-solutions or https://github.com/owner/leetcode-solutions"
               autocomplete="off"
             />
-            <span class="help-text"
-              >Examples: <code>https://github.com/username/reponame</code> or
-              <code>username/reponame</code></span
-            >
+            <span class="help-text">Example: <code>jackson/leetcode-solutions</code></span>
           </div>
 
           <div class="button-row">
-            <button id="test-connection-btn" class="btn primary">🔍 Test Connection & Save</button>
+            <button id="validate-token-btn" class="btn primary">Validate Configuration</button>
+            <button id="test-connection-btn" class="btn secondary">
+              🔍 Test Connection & Save
+            </button>
+            <button id="disconnect-btn" class="btn danger" style="display: none">
+              Disconnect & Clear
+            </button>
           </div>
+
+          <!-- LIVE VALIDATION PROGRESS STREAM -->
+          <div id="validation-progress" class="validation-progress-box" style="display: none">
+            <div class="progress-title">Validating GitHub configuration...</div>
+            <ul id="progress-steps-list" class="progress-steps-list"></ul>
+          </div>
+        </section>
+
+        <!-- DIAGNOSTIC REPORT CARD -->
+        <section id="test-report-card" class="section report-card" style="display: none">
+          <h2>Validation Result</h2>
+          <div id="report-content" class="report-content"></div>
         </section>
 
         <!-- SECTION 3: LEETCODE ACCOUNT LINKING -->
         <section class="section">
           <h2>3. Linked LeetCode Account</h2>
           <p class="section-desc">
-            LeetArchive only archives solutions when the currently logged-in LeetCode account
-            matches your linked account.
+            LeetArchive only archives solutions when the logged-in LeetCode account matches this
+            profile.
           </p>
 
           <!-- Auto-detected container -->
-          <div
-            id="auto-detected-account-container"
-            class="field"
-            style="
-              display: none;
-              background: rgba(255, 255, 255, 0.05);
-              padding: 12px 16px;
-              border-radius: 8px;
-              border: 1px solid rgba(255, 255, 255, 0.1);
-            "
-          >
+          <div id="auto-detected-account-container" class="field" style="display: none">
             <p style="margin: 0 0 10px 0">
               Detected LeetCode account:
-              <strong id="detected-username-display" style="color: #60a5fa; font-size: 1.1em"
-                >--</strong
-              >
+              <strong id="detected-username-display" class="highlight-username">--</strong>
             </p>
             <div class="button-row">
               <button id="use-detected-account-btn" type="button" class="btn primary">
@@ -217,25 +188,51 @@
               <input
                 type="text"
                 id="leetcode-username"
-                placeholder="e.g. username_xyz"
+                placeholder="e.g. jackson"
                 autocomplete="off"
               />
               <button id="save-leetcode-username-btn" type="button" class="btn secondary">
                 Save Account
               </button>
             </div>
-            <span class="help-text"
-              >Enter your exact LeetCode profile username (case-insensitive).</span
-            >
+            <span class="help-text">Case-insensitive LeetCode username.</span>
           </div>
 
-          <div id="linked-account-status" style="margin-top: 10px; font-weight: 500"></div>
+          <div id="linked-account-status" class="account-status"></div>
         </section>
 
-        <!-- SECTION 3: DIAGNOSTIC REPORT CARD -->
-        <section id="test-report-card" class="section report-card" style="display: none">
-          <h2>Diagnostic Connection Report</h2>
-          <div id="report-content" class="report-content"></div>
+        <!-- SECTION 4: GITHUB PUSH BEHAVIOR -->
+        <section class="section">
+          <h2>4. GitHub Push Behavior</h2>
+          <p class="section-desc">Control how accepted LeetCode solutions are pushed to GitHub.</p>
+
+          <div class="field">
+            <label for="push-behavior-select">Push Behavior</label>
+            <select id="push-behavior-select">
+              <option value="ask">Ask every time (Default)</option>
+              <option value="automatic">Push automatically</option>
+              <option value="never">Never push</option>
+            </select>
+            <span class="help-text">
+              <strong>Ask every time:</strong> Prompts you on LeetCode after archiving.<br />
+              <strong>Push automatically:</strong> Directly pushes to GitHub.<br />
+              <strong>Never push:</strong> Generates archive without pushing to GitHub.
+            </span>
+          </div>
+        </section>
+
+        <!-- SECTION 5: APPEARANCE / THEME -->
+        <section class="section">
+          <h2>5. Appearance</h2>
+          <div class="field">
+            <label for="theme-select">Theme</label>
+            <select id="theme-select">
+              <option value="system">System (Default)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+            <span class="help-text">Choose your preferred visual theme.</span>
+          </div>
         </section>
 
         <div id="save-status" class="status-toast"></div>

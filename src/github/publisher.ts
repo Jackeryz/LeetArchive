@@ -1,4 +1,10 @@
-import { AccountVerifiedPayload, ArchivePublishedPayload, EventBus } from '../core/events';
+﻿import {
+  AccountVerifiedPayload,
+  ArchivePublishedPayload,
+  ArchivePublishFailedPayload,
+  EventBus,
+  PushRequestedPayload,
+} from '../core/events';
 import { SecretsStorage } from '../storage/secrets';
 import { SettingsStorage } from '../storage/settings';
 import { APP_CONFIG } from '../core/config';
@@ -76,33 +82,51 @@ export async function parseAndLogGitHubApiError(
 
 /**
  * Service responsible for uploading verified solution archives to the user's configured GitHub repository.
- * Subscribes only to AccountVerified events. Has no dependency on LeetCode-specific logic.
+ * Subscribes ONLY to PushRequested events. Has no dependency on LeetCode-specific logic.
  */
 export class GitHubPublisher {
   private unsubscribe: (() => void) | null = null;
   private isListening: boolean = false;
+  private inFlightRequests: Set<string> = new Set();
 
   /**
-   * Starts listening for AccountVerified events on the EventBus.
+   * Starts listening for PushRequested events on the EventBus.
    */
   start(): void {
     if (this.isListening) {
-      logger.info('[GitHubPublisher] Already listening for AccountVerified events.');
+      logger.info('[GitHubPublisher] Already listening for PushRequested events.');
       return;
     }
 
     logger.info('[GitHubPublisher] Starting GitHub publisher listener...');
     this.isListening = true;
 
-    this.unsubscribe = EventBus.getInstance().subscribe<AccountVerifiedPayload>(
-      'AccountVerified',
+    this.unsubscribe = EventBus.getInstance().subscribe<PushRequestedPayload>(
+      'PushRequested',
       (event) => {
-        logger.info('[GitHubPublisher] AccountVerified event callback triggered.');
-        void this.publishArchive(event.payload).catch((err: unknown) => {
-          logger.error(
-            `[GitHubPublisher] Exception caught in publishArchive execution: ${err instanceof Error ? err.message : String(err)}`,
+        logger.info('[GitHubPublisher] PushRequested event callback triggered.');
+        const requestId = event.payload.requestId;
+        if (requestId && this.inFlightRequests.has(requestId)) {
+          logger.warn(
+            `[GitHubPublisher] Duplicate PushRequested ignored for request '${requestId}' (already in flight).`,
           );
-        });
+          return;
+        }
+
+        if (requestId) {
+          this.inFlightRequests.add(requestId);
+        }
+
+        void this.publishArchive(event.payload.verifiedPayload, requestId)
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error(`[GitHubPublisher] Exception caught in publishArchive execution: ${msg}`);
+          })
+          .finally(() => {
+            if (requestId) {
+              this.inFlightRequests.delete(requestId);
+            }
+          });
       },
     );
   }
@@ -112,9 +136,23 @@ export class GitHubPublisher {
    */
   public async publishArchive(
     verifiedPayload: AccountVerifiedPayload,
+    requestId?: string,
   ): Promise<ArchivePublishedPayload | null> {
-    logger.info('[GitHubPublisher] Beginning publishArchive execution...');
-    logger.info('[GitHubPublisher] Loading repository configuration and settings...');
+    const problemTitle = verifiedPayload?.archive?.problemTitle || 'Unknown Problem';
+    const problemSlug = verifiedPayload?.archive?.problemSlug || 'unknown';
+
+    const fail = (errorMsg: string): null => {
+      logger.warn(`[GitHubPublisher] Aborted: ${errorMsg}`);
+      const failedPayload: ArchivePublishFailedPayload = {
+        requestId,
+        problemTitle,
+        problemSlug,
+        error: errorMsg,
+        failedAt: Date.now(),
+      };
+      EventBus.getInstance().publish('ArchivePublishFailed', failedPayload);
+      return null;
+    };
 
     const token = await SecretsStorage.getToken();
     logger.info(
@@ -127,25 +165,23 @@ export class GitHubPublisher {
     );
 
     if (!token) {
-      logger.warn('[GitHubPublisher] Aborted: GitHub Personal Access Token is missing.');
-      return null;
+      return fail(
+        'GitHub Personal Access Token is missing. Please configure your token in settings.',
+      );
     }
 
     if (!settings.selectedRepo) {
-      logger.warn('[GitHubPublisher] Aborted: Target repository is not configured.');
-      return null;
+      return fail('Target repository is not configured. Please select a repository in settings.');
     }
 
-    if (!verifiedPayload.username) {
-      logger.warn('[GitHubPublisher] Aborted: Verified username missing in payload.');
-      return null;
+    if (!verifiedPayload || !verifiedPayload.username) {
+      return fail('Verified username missing in payload.');
     }
 
     const repoFullName = settings.selectedRepo;
     const [owner, repo] = repoFullName.split('/');
     if (!owner || !repo) {
-      logger.warn(`[GitHubPublisher] Aborted: Invalid repository format '${repoFullName}'.`);
-      return null;
+      return fail(`Invalid repository format '${repoFullName}'. Expected 'owner/repo'.`);
     }
 
     // Branch handling
@@ -162,10 +198,9 @@ export class GitHubPublisher {
       logger.info(`[GitHubPublisher] Using target branch: '${targetBranch}'`);
     }
 
-    const files = verifiedPayload.archive.files;
+    const files = verifiedPayload.archive?.files;
     if (!files || files.length === 0) {
-      logger.warn('[GitHubPublisher] Aborted: No virtual files in archive payload.');
-      return null;
+      return fail('No virtual files in archive payload.');
     }
 
     let lastCommitSha = '';
@@ -185,8 +220,7 @@ export class GitHubPublisher {
       );
 
       if (!uploadResult.success) {
-        logger.warn(`[GitHubPublisher] Upload failed for '${file.path}': ${uploadResult.error}`);
-        return null;
+        return fail(uploadResult.error || `Upload failed for '${file.path}'`);
       }
 
       if (uploadResult.commitSha) {
@@ -203,6 +237,7 @@ export class GitHubPublisher {
       commitSha: lastCommitSha,
       committedFiles: files.length,
       publishedAt: Date.now(),
+      requestId,
     };
 
     logger.info(
@@ -352,6 +387,7 @@ export class GitHubPublisher {
       this.unsubscribe = null;
     }
     this.isListening = false;
+    this.inFlightRequests.clear();
     logger.info('[GitHubPublisher] Stopped GitHub publisher listener.');
   }
 }

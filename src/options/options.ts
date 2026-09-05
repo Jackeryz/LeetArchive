@@ -5,6 +5,7 @@ import { RepositoryValidator, RepositoryValidationReport } from '../github/repos
 import { SecurityValidation } from '../security/validation';
 import { TokenSecurity } from '../security/token';
 import { LeetCodeAccountDetector } from '../leetcode/account-detector';
+import { PushBehavior, ThemePreference } from '../types/leetcode';
 import { logger } from '../utils/logger';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -22,6 +23,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const reportCard = document.getElementById('test-report-card') as HTMLDivElement;
   const reportContent = document.getElementById('report-content') as HTMLDivElement;
   const statusToast = document.getElementById('save-status') as HTMLDivElement;
+
+  // Validation progress elements
+  const progressBox = document.getElementById('validation-progress') as HTMLDivElement;
+  const progressStepsList = document.getElementById('progress-steps-list') as HTMLUListElement;
 
   // Section 3: LeetCode Account Linking Elements
   const autoDetectedContainer = document.getElementById(
@@ -41,12 +46,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   ) as HTMLButtonElement;
   const accountStatusDisplay = document.getElementById('linked-account-status') as HTMLDivElement;
 
+  // Section 4: Push Behavior Element
+  const pushBehaviorSelect = document.getElementById('push-behavior-select') as HTMLSelectElement;
+
+  // Section 5: Theme Element
+  const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
+
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let isValidating = false;
   const authService = new GitHubAuthService();
 
   // Load stored credentials & settings
   const settings = await SettingsStorage.getSettings();
   const storedToken = await SecretsStorage.getToken();
+
+  // Initialize theme
+  function applyTheme(theme: ThemePreference): void {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  const currentTheme = settings.theme || 'system';
+  applyTheme(currentTheme);
+  if (themeSelect) {
+    themeSelect.value = currentTheme;
+    themeSelect.addEventListener('change', async () => {
+      const selectedTheme = themeSelect.value as ThemePreference;
+      await SettingsStorage.saveSettings({ theme: selectedTheme });
+      applyTheme(selectedTheme);
+      showToast(`Theme updated to '${selectedTheme}'`, 'success');
+    });
+  }
 
   if (settings.selectedRepo) {
     repoUrlInput.value = `https://github.com/${settings.selectedRepo}`;
@@ -60,13 +95,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Populate Push Behavior setting
+  if (pushBehaviorSelect) {
+    pushBehaviorSelect.value = settings.pushBehavior || 'ask';
+    pushBehaviorSelect.addEventListener('change', async () => {
+      const selectedBehavior = pushBehaviorSelect.value as PushBehavior;
+      await SettingsStorage.saveSettings({ pushBehavior: selectedBehavior });
+      showToast(`Push behavior updated to '${selectedBehavior}'`, 'success');
+    });
+  }
+
   // Populate or auto-detect LeetCode account
   if (settings.leetcodeUsername) {
     leetcodeUsernameInput.value = settings.leetcodeUsername;
     manualAccountContainer.style.display = 'block';
     if (accountStatusDisplay) {
       accountStatusDisplay.textContent = `Linked LeetCode Account: @${settings.leetcodeUsername}`;
-      accountStatusDisplay.style.color = '#34d399';
+      accountStatusDisplay.style.color = 'var(--success)';
     }
   } else {
     // Attempt automatic detection for onboarding
@@ -82,7 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         manualAccountContainer.style.display = 'block';
         if (accountStatusDisplay) {
           accountStatusDisplay.textContent = `Linked LeetCode Account: @${detectedUsername}`;
-          accountStatusDisplay.style.color = '#34d399';
+          accountStatusDisplay.style.color = 'var(--success)';
         }
         showToast(`Linked LeetCode account saved as @${detectedUsername}`, 'success');
       });
@@ -110,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       leetcodeUsernameInput.value = validated;
       if (accountStatusDisplay) {
         accountStatusDisplay.textContent = `Linked LeetCode Account: @${validated}`;
-        accountStatusDisplay.style.color = '#34d399';
+        accountStatusDisplay.style.color = 'var(--success)';
       }
       showToast(`Linked LeetCode account updated to @${validated}`, 'success');
     });
@@ -129,7 +174,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function renderProgressSteps(
+    steps: { label: string; status: 'done' | 'pending' | 'failed' }[],
+  ): void {
+    if (!progressBox || !progressStepsList) return;
+    progressBox.style.display = 'block';
+    progressStepsList.innerHTML = steps
+      .map(
+        (s) =>
+          `<li class="${s.status}"><span>${s.status === 'done' ? '✓' : s.status === 'failed' ? '✕' : '●'}</span> <span>${SecurityValidation.escapeHtml(s.label)}</span></li>`,
+      )
+      .join('');
+  }
+
   const runComprehensiveValidation = async (): Promise<void> => {
+    if (isValidating) return;
+
     const rawToken = tokenInput.value;
     const sanitizedToken = TokenSecurity.sanitizeToken(rawToken);
     const rawUrl = repoUrlInput.value;
@@ -152,7 +212,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    isValidating = true;
     tokenInput.value = sanitizedToken;
+    logger.info('[Diagnostic] runComprehensiveValidation initiated');
+    logger.info('[Diagnostic] Token source: directly read from tokenInput.value');
+    logger.info(
+      `[Diagnostic] Token fingerprint: ${TokenSecurity.maskToken(sanitizedToken)} (length: ${sanitizedToken.length})`,
+    );
+    logger.info(`[Diagnostic] Configured target repository: ${repoInfo.fullName}`);
     if (validateBtn) {
       validateBtn.disabled = true;
       validateBtn.textContent = 'Validating Configuration...';
@@ -162,37 +229,106 @@ document.addEventListener('DOMContentLoaded', async () => {
       testConnBtn.textContent = 'Validating...';
     }
 
-    const validator = new RepositoryValidator(sanitizedToken);
-    const report = await validator.validateRepositoryScope(repoInfo.fullName);
+    // Stream initial progress UI
+    renderProgressSteps([
+      { label: 'PAT authentication', status: 'pending' },
+      { label: `Repository location (${repoInfo.fullName})`, status: 'pending' },
+      { label: 'PAT repository access scope', status: 'pending' },
+      { label: 'Contents Read & Write permission', status: 'pending' },
+      { label: 'Default branch detection', status: 'pending' },
+    ]);
 
-    if (validateBtn) {
-      validateBtn.disabled = false;
-      validateBtn.textContent = 'Validate Configuration';
+    try {
+      const validator = new RepositoryValidator(sanitizedToken);
+      const report = await validator.validateRepositoryScope(repoInfo.fullName);
+
+      // Update progress UI based on report status
+      const userLabel = report.authenticatedUser
+        ? `PAT authenticated (@${report.authenticatedUser})`
+        : 'PAT authentication';
+
+      renderProgressSteps([
+        { label: userLabel, status: report.tokenValid ? 'done' : 'failed' },
+        {
+          label: `Repository location (${repoInfo.fullName})`,
+          status: report.repoExists ? 'done' : 'failed',
+        },
+        {
+          label: 'PAT repository access scope',
+          status:
+            report.status === 'pat-invalid' ||
+            report.status === 'repository-not-found' ||
+            report.status === 'repository-inaccessible'
+              ? 'failed'
+              : 'done',
+        },
+        {
+          label: 'Contents Read & Write permission',
+          status: report.hasWritePermission ? 'done' : 'failed',
+        },
+        {
+          label: `Default branch detected (${report.repoDetails?.defaultBranch || 'main'})`,
+          status: report.isValid ? 'done' : 'pending',
+        },
+      ]);
+
+      const defaultBranch = report.repoDetails?.defaultBranch || 'main';
+
+      if (report.isValid) {
+        const finalRepo = report.repoDetails?.fullName || repoInfo.fullName;
+        await SecretsStorage.setToken(sanitizedToken);
+        await SettingsStorage.saveSettings({
+          selectedRepo: finalRepo,
+          branch: defaultBranch,
+        });
+
+        repoUrlInput.value = `https://github.com/${finalRepo}`;
+        disconnectBtn.style.display = 'inline-block';
+        showToast('✓ GitHub configuration verified & saved', 'success');
+      } else {
+        if (report.status === 'pat-invalid') {
+          showToast('✕ Invalid Personal Access Token', 'error');
+        } else if (report.status === 'repository-not-found') {
+          showToast('✕ Repository not found', 'error');
+        } else if (report.status === 'repository-inaccessible') {
+          showToast('✕ PAT does not have access to this repository', 'error');
+        } else if (report.status === 'read-only') {
+          showToast('✕ Write permission required', 'error');
+        } else {
+          showToast('✕ GitHub configuration validation failed', 'error');
+        }
+      }
+
+      renderDiagnosticReport(report);
+      updateStatusBadge(report.isValid);
+
+      logger.info('================= VALIDATION DIAGNOSTIC SUMMARY =================');
+      logger.info(`* configured repo: ${repoInfo.fullName}`);
+      logger.info(
+        `* token fingerprint: ${TokenSecurity.maskToken(sanitizedToken)} (length: ${sanitizedToken.length})`,
+      );
+      logger.info(`* authenticated user: ${report.authenticatedUser || 'null'}`);
+      logger.info(
+        `* contents probe HTTP status: ${report.contentsProbeStatus !== undefined ? report.contentsProbeStatus : 'not called'}`,
+      );
+      logger.info(`* validator status: ${report.status}`);
+      logger.info(`* validator isValid: ${report.isValid}`);
+      logger.info(`* persisted config changed: ${report.isValid}`);
+      logger.info(
+        `* displayed UI status: ${report.isValid ? 'Connected & Validated' : 'Disconnected / Pending Test'}`,
+      );
+      logger.info('================================================================');
+    } finally {
+      isValidating = false;
+      if (validateBtn) {
+        validateBtn.disabled = false;
+        validateBtn.textContent = 'Validate Configuration';
+      }
+      if (testConnBtn) {
+        testConnBtn.disabled = false;
+        testConnBtn.textContent = '🔍 Test Connection & Save';
+      }
     }
-    if (testConnBtn) {
-      testConnBtn.disabled = false;
-      testConnBtn.textContent = '🔍 Test Connection & Save';
-    }
-
-    const defaultBranch = report.repoDetails?.defaultBranch || 'main';
-
-    if (report.isValid) {
-      const finalRepo = report.repoDetails?.fullName || repoInfo.fullName;
-      await SecretsStorage.setToken(sanitizedToken);
-      await SettingsStorage.saveSettings({
-        selectedRepo: finalRepo,
-        branch: defaultBranch,
-      });
-
-      repoUrlInput.value = `https://github.com/${finalRepo}`;
-      disconnectBtn.style.display = 'inline-block';
-      showToast('✓ GitHub configuration verified', 'success');
-    } else {
-      showToast('❌ GitHub configuration validation failed', 'error');
-    }
-
-    renderDiagnosticReport(report);
-    updateStatusBadge(report.isValid);
   };
 
   // Validate Configuration button
@@ -220,6 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         disconnectBtn.style.display = 'none';
         disconnectBtn.disabled = false;
         reportCard.style.display = 'none';
+        if (progressBox) progressBox.style.display = 'none';
         updateStatusBadge(false);
         showToast('Credentials disconnected and cleared', 'info');
       }
@@ -247,7 +384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       .join('<br/>');
 
     reportContent.innerHTML = `
-      <div class="report-summary ${report.isValid ? 'success' : 'failure'}" style="font-family: monospace; white-space: pre-wrap; line-height: 1.6; padding: 16px; border-radius: 8px;">
+      <div class="report-summary ${report.isValid ? 'success' : 'failure'}">
         ${formattedLines}
       </div>
     `;

@@ -1,4 +1,4 @@
-import { UserExtensionSettings } from '../types/leetcode';
+import { PushBehavior, ThemePreference, UserExtensionSettings } from '../types/leetcode';
 import { DEFAULT_USER_SETTINGS } from '../core/config';
 
 export class SettingsModel implements UserExtensionSettings {
@@ -9,6 +9,8 @@ export class SettingsModel implements UserExtensionSettings {
   public autoSync: boolean;
   public syncReadme: boolean;
   public leetcodeUsername: string | null;
+  public pushBehavior: PushBehavior;
+  public theme: ThemePreference;
 
   constructor(settings?: Partial<UserExtensionSettings>) {
     this.githubToken = settings?.githubToken ?? DEFAULT_USER_SETTINGS.githubToken;
@@ -18,6 +20,8 @@ export class SettingsModel implements UserExtensionSettings {
     this.autoSync = settings?.autoSync ?? DEFAULT_USER_SETTINGS.autoSync;
     this.syncReadme = settings?.syncReadme ?? DEFAULT_USER_SETTINGS.syncReadme;
     this.leetcodeUsername = settings?.leetcodeUsername ?? DEFAULT_USER_SETTINGS.leetcodeUsername;
+    this.pushBehavior = settings?.pushBehavior ?? DEFAULT_USER_SETTINGS.pushBehavior;
+    this.theme = settings?.theme ?? DEFAULT_USER_SETTINGS.theme;
   }
 
   public isConfigured(): boolean {

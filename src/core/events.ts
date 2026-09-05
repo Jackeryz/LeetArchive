@@ -1,4 +1,4 @@
-import { ProblemDifficulty, SubmissionDetails } from '../types/leetcode';
+﻿import { ProblemDifficulty, SubmissionDetails } from '../types/leetcode';
 import { logger } from '../utils/logger';
 
 export type ExtensionEventType =
@@ -6,7 +6,11 @@ export type ExtensionEventType =
   | 'SolutionExtracted'
   | 'ArchiveGenerated'
   | 'AccountVerified'
+  | 'PushPromptRequested'
+  | 'PushRequested'
+  | 'PushCancelled'
   | 'ArchivePublished'
+  | 'ArchivePublishFailed'
   | 'SubmissionParsed'
   | 'SyncRequested'
   | 'SyncCompleted'
@@ -119,12 +123,40 @@ export interface AccountVerifiedPayload {
   verifiedAt: number;
 }
 
+export interface PushPromptRequestedPayload {
+  requestId: string;
+  verifiedPayload: AccountVerifiedPayload;
+  repository: string | null;
+  branch: string;
+}
+
+export interface PushRequestedPayload {
+  requestId: string;
+  verifiedPayload: AccountVerifiedPayload;
+}
+
+export interface PushCancelledPayload {
+  requestId: string;
+  problemTitle: string;
+  problemSlug: string;
+  reason?: string;
+}
+
 export interface ArchivePublishedPayload {
   repository: string;
   branch: string;
   commitSha: string;
   committedFiles: number;
   publishedAt: number;
+  requestId?: string;
+}
+
+export interface ArchivePublishFailedPayload {
+  requestId?: string;
+  problemTitle: string;
+  problemSlug: string;
+  error: string;
+  failedAt: number;
 }
 
 export interface SubmissionParsedPayload {

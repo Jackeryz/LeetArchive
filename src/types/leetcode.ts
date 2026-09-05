@@ -1,8 +1,12 @@
 /**
- * LeetCode problem, submission, and language metadata types for LeetSync.
+ * LeetCode problem, submission, and language metadata types for LeetArchive.
  */
 
 export type ProblemDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Unknown';
+
+export type PushBehavior = 'ask' | 'automatic' | 'never';
+
+export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface LeetCodeProblem {
   id: string;
@@ -49,4 +53,6 @@ export interface UserExtensionSettings {
   autoSync: boolean;
   syncReadme: boolean;
   leetcodeUsername?: string | null;
+  pushBehavior?: PushBehavior;
+  theme?: ThemePreference;
 }

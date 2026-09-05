@@ -1,3 +1,5 @@
+import { PushBehavior, ThemePreference } from '../types/leetcode';
+
 /**
  * Centralized application configuration for LeetArchive.
  */
@@ -19,4 +21,6 @@ export const DEFAULT_USER_SETTINGS = {
   autoSync: true,
   syncReadme: true,
   leetcodeUsername: null as string | null,
+  pushBehavior: 'ask' as PushBehavior,
+  theme: 'system' as ThemePreference,
 };
