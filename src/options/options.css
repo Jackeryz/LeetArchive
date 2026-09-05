@@ -86,7 +86,11 @@ body {
 }
 
 .logo-icon {
-  font-size: 2rem;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  object-fit: contain;
+  display: block;
 }
 
 .header h1 {

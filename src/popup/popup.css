@@ -38,6 +38,14 @@ body {
   gap: 8px;
 }
 
+.logo .icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: contain;
+  display: block;
+}
+
 .logo h1 {
   font-size: 1.1rem;
   margin: 0;
